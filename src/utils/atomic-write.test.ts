@@ -8,7 +8,7 @@ describe('atomicWriteFile', () => {
   let dir: string
 
   beforeEach(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-notion-mirror-atomic-'))
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-kb-notion-mirror-atomic-'))
   })
 
   afterEach(async () => {

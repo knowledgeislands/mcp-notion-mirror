@@ -1,13 +1,14 @@
 {
-  "name": "@knowledgeislands/mcp-notion-mirror",
+  "name": "@knowledgeislands/mcp-kb-notion-mirror",
   "description": "MCP that mirrors local Knowledge Base markdown notes to a Notion wiki and records the resulting page URLs back into the notes' frontmatter",
   "version": "1.0.0",
   "author": "kris@kris.me.uk",
   "bin": {
-    "mcp-notion-mirror": "dist/mcp-server/index.js"
+    "mcp-kb-notion-mirror": "dist/mcp-server/index.js",
+    "mcp-kb-notion-mirror-publish": "dist/orchestrator/cli.js"
   },
   "bugs": {
-    "url": "https://github.com/knowledgeislands/mcp-notion-mirror/issues"
+    "url": "https://github.com/knowledgeislands/mcp-kb-notion-mirror/issues"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -47,12 +48,16 @@
       "types": "./dist/main/mirror/index.d.ts",
       "import": "./dist/main/mirror/index.js"
     },
+    "./orchestrator": {
+      "types": "./dist/orchestrator/index.d.ts",
+      "import": "./dist/orchestrator/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
-  "homepage": "https://github.com/knowledgeislands/mcp-notion-mirror#readme",
+  "homepage": "https://github.com/knowledgeislands/mcp-kb-notion-mirror#readme",
   "keywords": [
     "anthropic",
     "claude",
@@ -69,10 +74,10 @@
   "packageManager": "bun@1.3.14",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/knowledgeislands/mcp-notion-mirror.git"
+    "url": "git+https://github.com/knowledgeislands/mcp-kb-notion-mirror.git"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/mcp-server/index.js dist/orchestrator/cli.js",
     "clean": "rm -rf {dist,node_modules}",
     "deps:missing": "bunx depcheck --json | bunx node-jq --sort-keys '.' | bunx node-jq '.missing | keys | .[]' | xargs bun add -D",
     "deps:unused": "bunx depcheck --json | bunx node-jq --sort-keys '.' | bunx node-jq '.devDependencies[]' | xargs bun remove",

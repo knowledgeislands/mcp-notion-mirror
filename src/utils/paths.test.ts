@@ -9,7 +9,7 @@ let kbRoot: string
 const real = (p: string) => fs.realpathSync(p)
 
 beforeEach(async () => {
-  kbRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-notion-mirror-paths-'))
+  kbRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-kb-notion-mirror-paths-'))
   await fsp.mkdir(path.join(kbRoot, 'sub'), { recursive: true })
   await fsp.writeFile(path.join(kbRoot, 'sub', 'note.md'), 'x')
 })
@@ -40,7 +40,7 @@ describe('resolveKbNotePath (kbRoot set)', () => {
   })
 
   it('rejects a symlink that escapes the root (realpath confinement)', async () => {
-    const outsideParent = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-notion-mirror-outside-'))
+    const outsideParent = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-kb-notion-mirror-outside-'))
     try {
       await fsp.symlink(outsideParent, path.join(kbRoot, 'link'))
       expect(() => resolveKbNotePath(kbRoot, 'link/escaped.md')).toThrow(/escapes the allowed KB root/)

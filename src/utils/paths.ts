@@ -65,7 +65,7 @@ export const resolveKbNotePath = (kbRoot: string | undefined, kbPath: string): s
     resolved = path.normalize(kbPath)
   } else {
     if (kbRoot === undefined) {
-      throw new KbPathError('kb_path is relative but MCP_NOTION_MIRROR_KB_ROOT is not set. Pass an absolute path or set the KB root.')
+      throw new KbPathError('kb_path is relative but MCP_KB_NOTION_MIRROR_KB_ROOT is not set. Pass an absolute path or set the KB root.')
     }
     resolved = path.resolve(kbRoot, kbPath)
   }

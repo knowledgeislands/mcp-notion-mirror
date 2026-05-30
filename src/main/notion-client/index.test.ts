@@ -31,7 +31,7 @@ const PAGE_RESPONSE = {
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
 
-describe('notion-client (mcp-notion-mirror)', () => {
+describe('notion-client (mcp-kb-notion-mirror)', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {

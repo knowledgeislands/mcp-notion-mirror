@@ -18,7 +18,7 @@ export type AuditLogMode = 'off' | 'writes' | 'all'
 
 /**
  * The mirrored-from-KB banner. `{date}` interpolates today's UTC date; markdown
- * `**bold**` is honoured. Override with `MCP_NOTION_MIRROR_BANNER_TEMPLATE`; an
+ * `**bold**` is honoured. Override with `MCP_KB_NOTION_MIRROR_BANNER_TEMPLATE`; an
  * empty string disables the banner. The default omits a leading emoji because
  * the callout renders the 📘 icon (see src/main/mirror/banner.ts).
  */
@@ -49,14 +49,14 @@ const parseAccessLevel = (raw: string | undefined): AccessLevel => {
   const v = raw?.trim()
   if (v === undefined || v === '') return 'write'
   if ((ACCESS_LEVELS as readonly string[]).includes(v)) return v as AccessLevel
-  throw new Error(`Invalid MCP_NOTION_MIRROR_ACCESS_LEVEL="${raw}". Allowed: ${ACCESS_LEVELS.join(', ')}`)
+  throw new Error(`Invalid MCP_KB_NOTION_MIRROR_ACCESS_LEVEL="${raw}". Allowed: ${ACCESS_LEVELS.join(', ')}`)
 }
 
 const parseAuditLogMode = (raw: string | undefined): AuditLogMode => {
   const v = raw?.trim().toLowerCase()
   if (v === undefined || v === '') return 'writes'
   if (v === 'off' || v === 'writes' || v === 'all') return v
-  throw new Error(`Invalid MCP_NOTION_MIRROR_AUDIT_LOG="${raw}" — expected one of: off, writes, all.`)
+  throw new Error(`Invalid MCP_KB_NOTION_MIRROR_AUDIT_LOG="${raw}" — expected one of: off, writes, all.`)
 }
 
 const parseNonNegativeInt = (raw: string | undefined, fallback: number, varName: string): number => {
@@ -86,18 +86,18 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
   return {
     notionToken: requireEnv(
       env,
-      'MCP_NOTION_MIRROR_TOKEN',
+      'MCP_KB_NOTION_MIRROR_TOKEN',
       'Create a Notion internal integration, grant it Read + Insert + Update content, connect it to the target page/database, and copy its secret (ntn_…) here.'
     ),
-    notionApiBaseUrl: (env.MCP_NOTION_MIRROR_API_BASE_URL ?? 'https://api.notion.com').replace(/\/+$/, ''),
+    notionApiBaseUrl: (env.MCP_KB_NOTION_MIRROR_API_BASE_URL ?? 'https://api.notion.com').replace(/\/+$/, ''),
     // Notion versions the API via a header, not the URL. Bump when Notion ships a new stable date.
     notionApiVersion: '2022-06-28',
-    kbRoot: resolveKbRoot(env.MCP_NOTION_MIRROR_KB_ROOT),
-    bannerTemplate: env.MCP_NOTION_MIRROR_BANNER_TEMPLATE ?? DEFAULT_BANNER_TEMPLATE,
-    accessLevel: parseAccessLevel(env.MCP_NOTION_MIRROR_ACCESS_LEVEL),
-    auditLogMode: parseAuditLogMode(env.MCP_NOTION_MIRROR_AUDIT_LOG),
-    auditLogPath: path.resolve(expandHome(env.MCP_NOTION_MIRROR_AUDIT_LOG_PATH ?? path.join(os.homedir(), '.local', 'state', 'mcp-notion-mirror', 'audit.jsonl'))),
-    auditLogMaxBytes: parseNonNegativeInt(env.MCP_NOTION_MIRROR_AUDIT_LOG_MAX_BYTES, 10 * 1024 * 1024, 'MCP_NOTION_MIRROR_AUDIT_LOG_MAX_BYTES'),
-    auditLogKeep: parseNonNegativeInt(env.MCP_NOTION_MIRROR_AUDIT_LOG_KEEP, 5, 'MCP_NOTION_MIRROR_AUDIT_LOG_KEEP')
+    kbRoot: resolveKbRoot(env.MCP_KB_NOTION_MIRROR_KB_ROOT),
+    bannerTemplate: env.MCP_KB_NOTION_MIRROR_BANNER_TEMPLATE ?? DEFAULT_BANNER_TEMPLATE,
+    accessLevel: parseAccessLevel(env.MCP_KB_NOTION_MIRROR_ACCESS_LEVEL),
+    auditLogMode: parseAuditLogMode(env.MCP_KB_NOTION_MIRROR_AUDIT_LOG),
+    auditLogPath: path.resolve(expandHome(env.MCP_KB_NOTION_MIRROR_AUDIT_LOG_PATH ?? path.join(os.homedir(), '.local', 'state', 'mcp-kb-notion-mirror', 'audit.jsonl'))),
+    auditLogMaxBytes: parseNonNegativeInt(env.MCP_KB_NOTION_MIRROR_AUDIT_LOG_MAX_BYTES, 10 * 1024 * 1024, 'MCP_KB_NOTION_MIRROR_AUDIT_LOG_MAX_BYTES'),
+    auditLogKeep: parseNonNegativeInt(env.MCP_KB_NOTION_MIRROR_AUDIT_LOG_KEEP, 5, 'MCP_KB_NOTION_MIRROR_AUDIT_LOG_KEEP')
   }
 }

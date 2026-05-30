@@ -5,7 +5,7 @@
 // cover registration; this covers the actual protocol round-trip).
 //
 // Run via `bun run test:smoke` (builds dist/ first). Runs in CI without secrets:
-// the server only needs MCP_NOTION_MIRROR_TOKEN to boot, so we pass a throwaway
+// the server only needs MCP_KB_NOTION_MIRROR_TOKEN to boot, so we pass a throwaway
 // placeholder — no real Notion call is ever made.
 
 import * as os from 'node:os'
@@ -13,8 +13,17 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 // Single source of truth for the tool surface — kept in sync with
-// src/tools/mirror/index.ts and the access-level tests. Add a tool → update both.
-const EXPECTED_TOOLS = ['notion_mirror_publish', 'notion_mirror_unpublish', 'notion_mirror_move', 'notion_mirror_get'] as const
+// src/tools/mirror/index.ts, src/tools/tree/index.ts, and the access-level
+// tests. Add a tool → update both.
+const EXPECTED_TOOLS = [
+  'notion_mirror_publish',
+  'notion_mirror_unpublish',
+  'notion_mirror_move',
+  'notion_mirror_get',
+  'notion_mirror_tree_status',
+  'notion_mirror_tree_preflight',
+  'notion_mirror_tree_publish'
+] as const
 
 const die = (msg: string, detail?: unknown): never => {
   console.error(`✗ smoke failed: ${msg}`)
@@ -31,13 +40,13 @@ const main = async (): Promise<void> => {
     // `write` gate would otherwise hide unpublish).
     env: {
       ...(process.env as Record<string, string>),
-      MCP_NOTION_MIRROR_TOKEN: 'ntn_smoke_placeholder',
-      MCP_NOTION_MIRROR_KB_ROOT: os.tmpdir(),
-      MCP_NOTION_MIRROR_ACCESS_LEVEL: 'destructive',
-      MCP_NOTION_MIRROR_AUDIT_LOG: 'off'
+      MCP_KB_NOTION_MIRROR_TOKEN: 'ntn_smoke_placeholder',
+      MCP_KB_NOTION_MIRROR_KB_ROOT: os.tmpdir(),
+      MCP_KB_NOTION_MIRROR_ACCESS_LEVEL: 'destructive',
+      MCP_KB_NOTION_MIRROR_AUDIT_LOG: 'off'
     }
   })
-  const client = new Client({ name: 'mcp-notion-mirror-smoke', version: '0.0.0' }, { capabilities: {} })
+  const client = new Client({ name: 'mcp-kb-notion-mirror-smoke', version: '0.0.0' }, { capabilities: {} })
 
   await client.connect(transport)
 

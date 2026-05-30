@@ -4,6 +4,7 @@ import type { Config } from '../../config/index.js'
 import { getNote, moveNote, publishNote, unpublishNote } from '../../main/mirror/index.js'
 import type { NotionIcon, NotionParent } from '../../main/notion-client/index.js'
 import { DESTRUCTIVE_REMOTE, READ_ONLY_REMOTE, WRITE_REMOTE } from '../../utils/annotations.js'
+import { parentArg } from '../../utils/notion-args.js'
 import { errorResult, jsonResult } from '../../utils/results.js'
 
 const noParentSegment = (s: string): boolean => !s.split(/[\\/]/).includes('..')
@@ -13,14 +14,7 @@ const kbPathArg = z
   .min(1)
   .max(4096)
   .refine(noParentSegment, 'kb_path must not contain ".." segments')
-  .describe('Path to the KB markdown note. Relative paths resolve against MCP_NOTION_MIRROR_KB_ROOT; absolute paths must fall under it when set. ".." segments are rejected.')
-
-// A Notion id: bare 32-hex or a dashed UUID (case-insensitive). Passed to Notion verbatim.
-const notionId = z.string().regex(/^[0-9a-fA-F]{32}$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, 'must be a 32-hex Notion id or a dashed UUID')
-
-const parentArg = z
-  .discriminatedUnion('type', [z.object({ type: z.literal('database_id'), database_id: notionId }).strict(), z.object({ type: z.literal('page_id'), page_id: notionId }).strict()])
-  .describe('Notion parent object, passed to Notion verbatim: { type: "database_id", database_id } or { type: "page_id", page_id }. The caller decides which.')
+  .describe('Path to the KB markdown note. Relative paths resolve against MCP_KB_NOTION_MIRROR_KB_ROOT; absolute paths must fall under it when set. ".." segments are rejected.')
 
 const iconArg = z
   .discriminatedUnion('type', [

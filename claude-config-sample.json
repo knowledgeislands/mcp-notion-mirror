@@ -1,11 +1,11 @@
 {
   "mcpServers": {
-    "mcp-notion-mirror": {
+    "mcp-kb-notion-mirror": {
       "command": "node",
-      "args": ["/path/to/mcp-notion-mirror/dist/mcp-server/index.js"],
+      "args": ["/path/to/mcp-kb-notion-mirror/dist/mcp-server/index.js"],
       "env": {
-        "MCP_NOTION_MIRROR_TOKEN": "ntn_REPLACE_WITH_YOUR_INTEGRATION_SECRET",
-        "MCP_NOTION_MIRROR_KB_ROOT": "/absolute/path/to/your/kb"
+        "MCP_KB_NOTION_MIRROR_TOKEN": "ntn_REPLACE_WITH_YOUR_INTEGRATION_SECRET",
+        "MCP_KB_NOTION_MIRROR_KB_ROOT": "/absolute/path/to/your/kb"
       }
     }
   }

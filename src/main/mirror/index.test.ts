@@ -40,19 +40,24 @@ describe('mirror-ops', () => {
     return abs
   }
 
-  // Routes the calls a `replace` makes: GET database (title prop), PATCH page
-  // (updatePage), GET children (replaceBody + footer), and PATCH/DELETE children.
-  const routeReplace = (children: unknown[]) =>
+  // Routes the calls a `replace` makes: GET page (before-parent snapshot), GET
+  // database (title prop), PATCH page (updatePage), GET children (replaceBody +
+  // footer), and PATCH/DELETE children. `pageParent` overrides the page's
+  // parent in the GET/PATCH response — defaults to the database parent.
+  const routeReplace = (children: unknown[], pageParent?: Record<string, unknown>) => {
+    const pageResp = pageParent ? { ...PAGE_RESPONSE, parent: pageParent } : PAGE_RESPONSE
     fetchMock.mockImplementation(async (url: string, init?: { method?: string }) => {
       const method = init?.method ?? 'GET'
       if (url.includes('/v1/databases/')) return ok(DB_RESPONSE)
-      if (/\/v1\/pages\/[a-f0-9]+$/.test(url) && method === 'PATCH') return ok(PAGE_RESPONSE)
+      if (/\/v1\/pages\/[a-f0-9]+$/.test(url) && method === 'PATCH') return ok(pageResp)
+      if (/\/v1\/pages\/[a-f0-9]+$/.test(url) && method === 'GET') return ok(pageResp)
       if (url.includes('/children') && method === 'GET') return ok({ results: children, has_more: false, next_cursor: null })
       return ok({ results: [{ id: 'x' }] })
     })
+  }
 
   beforeEach(async () => {
-    kbRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-notion-mirror-ops-'))
+    kbRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-kb-notion-mirror-ops-'))
     cfg = {
       notionToken: 'ntn_secrettoken',
       notionApiBaseUrl: 'https://api.notion.test',
@@ -243,10 +248,42 @@ describe('mirror-ops', () => {
 
     it('mode "replace" under a page parent sends the icon and refreshes the parent footer', async () => {
       const abs = await writeNote('My Note.md', FM(`\nnotion_mirror_url: ${MIRROR_URL}`))
-      routeReplace([{ id: OLD_BODY, type: 'paragraph' }])
+      routeReplace([{ id: OLD_BODY, type: 'paragraph' }], { type: 'page_id', page_id: OLD_PARENT })
       await publishNote(cfg, abs, { type: 'page_id', page_id: OLD_PARENT }, { mode: 'replace', icon: { type: 'emoji', emoji: '📗' } })
       const pagePatch = fetchMock.mock.calls.find((c) => /\/v1\/pages\/[a-f0-9]+$/.test(String(c[0])) && c[1].method === 'PATCH')
       expect(JSON.parse(pagePatch?.[1].body).icon).toEqual({ type: 'emoji', emoji: '📗' })
+      expect(fetchMock.mock.calls.some((c) => String(c[0]) === `https://api.notion.test/v1/blocks/${OLD_PARENT}/children?page_size=100`)).toBe(true)
+    })
+
+    it('mode "replace" detects the page-id ↔ database-id silent-failure case and throws', async () => {
+      const abs = await writeNote('note.md', FM(`\nnotion_mirror_url: ${MIRROR_URL}`))
+      const pageParent = { type: 'page_id', page_id: 'a'.repeat(32) }
+      fetchMock.mockResolvedValueOnce(ok(DB_RESPONSE)) // title-property lookup for the new db parent
+      fetchMock.mockResolvedValueOnce(ok({ ...PAGE_RESPONSE, parent: pageParent })) // GET before (page parent)
+      fetchMock.mockResolvedValueOnce(ok({ ...PAGE_RESPONSE, parent: pageParent })) // PATCH parent (silently ignored, response still shows old parent)
+      fetchMock.mockResolvedValueOnce(ok({ ...PAGE_RESPONSE, parent: pageParent })) // GET after — unchanged
+      await expect(publishNote(cfg, abs, { type: 'database_id', database_id: DB_ID }, { mode: 'replace' })).rejects.toThrow(/silently ignored the parent change/)
+    })
+
+    it('mode "replace" accepts a cross-type re-parent that actually took effect and refreshes the old page parent footer', async () => {
+      const abs = await writeNote('My Note.md', FM(`\nnotion_mirror_url: ${MIRROR_URL}`))
+      const oldPageParent = { type: 'page_id' as const, page_id: OLD_PARENT }
+      const newDbParent = { type: 'database_id' as const, database_id: DB_ID }
+      fetchMock.mockImplementation(async (url: string, init?: { method?: string }) => {
+        const method = init?.method ?? 'GET'
+        if (url.includes('/v1/databases/')) return ok(DB_RESPONSE)
+        if (/\/v1\/pages\/[a-f0-9]+$/.test(url) && method === 'PATCH') return ok({ ...PAGE_RESPONSE, parent: newDbParent })
+        // Two GETs on the page: 1st returns OLD parent (before), 2nd returns NEW parent (after).
+        if (/\/v1\/pages\/[a-f0-9]+$/.test(url) && method === 'GET') {
+          const getCalls = fetchMock.mock.calls.filter((c) => /\/v1\/pages\/[a-f0-9]+$/.test(String(c[0])) && (c[1]?.method ?? 'GET') === 'GET').length
+          return ok({ ...PAGE_RESPONSE, parent: getCalls <= 1 ? oldPageParent : newDbParent })
+        }
+        if (url.includes('/children') && method === 'GET') return ok({ results: [{ id: OLD_BODY, type: 'paragraph' }], has_more: false, next_cursor: null })
+        return ok({ results: [{ id: 'x' }] })
+      })
+      const result = await publishNote(cfg, abs, newDbParent, { mode: 'replace' })
+      expect((result as { mode: string }).mode).toBe('replace')
+      // Old page parent's footer should be refreshed (we re-parented away from it).
       expect(fetchMock.mock.calls.some((c) => String(c[0]) === `https://api.notion.test/v1/blocks/${OLD_PARENT}/children?page_size=100`)).toBe(true)
     })
 

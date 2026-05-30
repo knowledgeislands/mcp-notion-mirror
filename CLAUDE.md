@@ -4,7 +4,12 @@ Guidance for Claude Code when working in this repo. The user-facing tool surface
 
 ## What this MCP does
 
-Publishes a single local KB markdown note to Notion under a **caller-supplied parent** and writes the resulting page URL back into the note's frontmatter. It is **file-aware but layout-agnostic**: one `kb_path` per call, no directory walking, no parent resolution, no folder/exclusion conventions. The orchestrator (a skill/script in the calling project) owns all of that. The markdown→blocks step is delegated to `@tryfabric/martian`.
+Mirrors KB markdown notes into Notion and writes the resulting page URL back into each note's frontmatter. Two layers of tools:
+
+- **Per-note mirror tools** (`notion_mirror_*`) — publish/move/unpublish/get one `kb_path` under a caller-supplied Notion `parent`. File-aware but layout-agnostic: no directory walking, no parent resolution.
+- **Subtree orchestrator tools** (`notion_mirror_tree_*`) — walk a caller-supplied `subtree` folder under `cfg.kbRoot`, apply the folder-index hierarchy convention, and attach the subtree-root under a caller-supplied `parent`. Built on top of the per-note ops.
+
+There is **no fixed root folder and no fixed wiki database**. The `subtree` and `parent` are supplied per call (tool args / CLI flags), never via env. The markdown→blocks step is delegated to `@tryfabric/martian`.
 
 ## Bun vs Node
 
@@ -12,7 +17,7 @@ This project uses Bun (≥ 1.3) for install and dev scripts, but the compiled `d
 
 - `bun run test` (NOT `bun test` — the latter invokes Bun's own runner instead of vitest).
 - Bun auto-loads `.env.${NODE_ENV}` from the CWD; Node needs the explicit `process.loadEnvFile()` call inside `loadConfig()` in [src/config/index.ts](./src/config/index.ts). The try/catch swallows the `TypeError` Bun raises (no `process.loadEnvFile`), so the same code works under both.
-- `NODE_ENV` is set to `development` only by `server:mcp:dev` and `server:mcp:inspect`. Claude Desktop doesn't set it, so `.env.*` is ignored in production — `MCP_NOTION_MIRROR_TOKEN` must come from the Claude Desktop config `env` block.
+- `NODE_ENV` is set to `development` only by `server:mcp:dev` and `server:mcp:inspect`. Claude Desktop doesn't set it, so `.env.*` is ignored in production — `MCP_KB_NOTION_MIRROR_TOKEN` must come from the Claude Desktop config `env` block.
 
 Run `bun run` with no args for the full script list.
 
@@ -20,82 +25,78 @@ Run `bun run` with no args for the full script list.
 
 ### Project layout & config injection (the workspace MCP shape)
 
-This is the canonical layout we roll out across the MCPs:
-
 - **[src/config/index.ts](./src/config/index.ts)** — `loadConfig(env?) → Config`. Reads env (optionally hydrated from `.env.${NODE_ENV}`) into a plain `Config` value. **There is no module-level config singleton — nothing reads env at import time.**
-- **[src/mcp-server/index.ts](./src/mcp-server/index.ts)** — the stdio MCP wrapper. Calls `loadConfig()` once and threads the `Config` into tool registration.
-- **[src/tools/](./src/tools/)** — MCP tool definitions only. Thin: validate args, call a `main/` function, map result/throw to an MCP envelope. Excluded from coverage.
-- **[src/main/](./src/main/)** — the real implementation, usable outside the MCP server (e.g. from a script). Grouped by concern: `main/notion-client/index.ts` (HTTP layer) and `main/mirror/` (publish/unpublish/move/get + banner, footer, wikilinks, markdown, frontmatter, title-property). Every `main` entry point takes `Config` (or the slice it needs) as its **first argument** — `publishNote(cfg, kbPath, parent, opts)`, `createPage(cfg, params)`. No hidden state.
-- **[src/utils/](./src/utils/)** — cross-MCP reusable helpers; keep in sync with sibling repos. These take the **specific config primitive** they need (e.g. `resolveKbNotePath(kbRoot, kbPath)`, `withAuditLog(auditConfig, …)`, `makeAccessGatedRegister(server, accessLevel, audit)`), not the whole `Config`, so they stay MCP-agnostic.
+- **[src/mcp-server/index.ts](./src/mcp-server/index.ts)** — the stdio MCP wrapper. Calls `loadConfig()` once, wires the access gate, and threads the `Config` into `registerMirrorTools` then `registerTreeTools`. Excluded from coverage.
+- **[src/tools/](./src/tools/)** — MCP tool definitions only. Thin: validate args (zod), confine paths, call a `main/`-or-`orchestrator/` function, map result/throw to an MCP envelope via `jsonResult`/`errorResult`. `src/tools/**/index.ts` is excluded from coverage — never put logic there.
+- **[src/main/](./src/main/)** — the per-note implementation: `main/notion-client/index.ts` (HTTP layer) and `main/mirror/` (publish/unpublish/move/get + banner, footer, wikilinks, markdown, frontmatter, title-property). Every entry point takes `Config` (or its needed slice) as its first argument.
+- **[src/orchestrator/](./src/orchestrator/)** — the subtree layer. `discover.ts` (pure FS: discover/publishOrder/resolveParent/buildLinkMap/iconFor), `settings.ts` (`loadOrchestratorSettings`), `api.ts` (preflight/status/pass1/pass2/publishAll/publishOne/unpublishOne — **returns structured data, NO console.\***), `cli.ts` (the `mcp-kb-notion-mirror-publish` bin — does all human-readable printing; coverage-excluded), `index.ts` (re-exports). The subtree ops take `(kbRoot|cfg, subtree, [parent], settings, …)`.
+- **[src/utils/](./src/utils/)** — cross-MCP reusable helpers that take the specific config primitive they need (`resolveKbNotePath(kbRoot, kbPath)`, `withAuditLog(auditConfig, …)`, `makeAccessGatedRegister(server, accessLevel, audit)`). `notion-args.ts` holds the shared `parentArg`/`notionId` zod schemas; it and `annotations.ts` are pure data and coverage-excluded.
 
-To use the code from a script: `const cfg = loadConfig(); await publishNote(cfg, './note.md', parent, {})`.
+To use the code from a script: `const cfg = loadConfig(); await publishAll(cfg, 'Pillars/Engineering', { type: 'database_id', database_id }, loadOrchestratorSettings(), { dryRun: true })`.
 
-### Layering — the MCP owns plumbing, the caller owns policy
+### Nothing reachable from a tool may write to stdout
 
-| Layer                        | Owns                                                                                       | Frontmatter fields                                             |
-| ---------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| **MCP (this repo)**          | Notion API plumbing, markdown→blocks, banner, frontmatter write-back                       | reads/writes `notion_mirror_url`, `notion_mirror_published_at` |
-| **Orchestrator (elsewhere)** | file discovery, parent resolution, exclusion/folder conventions, publish order, bulk loops | reads `notion_source_url`, `mirror`, everything else           |
+The MCP speaks JSON-RPC over stdout. `orchestrator/api.ts` therefore **returns** structured data and never logs — the only `console.*` lives in `cli.ts` (not a tool) and in `main/mirror/index.ts`'s footer-refresh path which uses `console.error` (stderr, not stdout). `api.test.ts` asserts the api layer makes no `console.log`/`console.error` calls. Keep it that way: when adding orchestrator logic, return data; let the CLI print it.
 
-A KB-convention change is a caller change, **never** an MCP version bump. Do not add file-walking, parent-derivation, or a `publish_all` tool here — that's out of scope by design — the MCP is plumbing, not policy.
+### The folder-index convention (orchestrator/discover.ts)
+
+`resolveParent(n, subtree, rootParent, urlByKbPath)`:
+
+- `folderKbPath = dirname(n.kbPath)`.
+- index note (`base === parentFolder`): if `folderKbPath === subtree` → `rootParent`; else look up the index of the **grandparent** folder (`dirname(folderKbPath)`) in `urlByKbPath` → `page_id` parent (throws if missing/bad URL).
+- leaf note: look up the index of `folderKbPath` → `page_id` parent.
+
+`publishOrder` is DFS preorder from the subtree dir (index first, then leaves alphabetically, then sub-folders). `publishOne` walks the ancestor chain up to the subtree-root index so an unpublished ancestor is created first.
 
 ### Naming convention
 
-Tool names follow `<app>_<resource>_<action>` (snake_case) with `<app>` = `notion_mirror`. Surface (4 tools, all in [src/tools/mirror/index.ts](./src/tools/mirror/index.ts)):
+Tool names follow `<app>_<resource>_<action>` (snake_case) with `<app>` = `notion_mirror`. Surface (7 tools):
 
-- `notion_mirror_get` (read) · `notion_mirror_publish` (write) · `notion_mirror_move` (write) · `notion_mirror_unpublish` (destructive).
+- per-note: `notion_mirror_get` (read) · `notion_mirror_publish` (write) · `notion_mirror_move` (write) · `notion_mirror_unpublish` (destructive) — all in [src/tools/mirror/index.ts](./src/tools/mirror/index.ts).
+- subtree: `notion_mirror_tree_status` (read) · `notion_mirror_tree_preflight` (read) · `notion_mirror_tree_publish` (destructive) — all in [src/tools/tree/index.ts](./src/tools/tree/index.ts).
 
-### Thin tools, testable ops
-
-The tool handlers are thin: validate args (zod), call one function in [src/main/mirror/index.ts](./src/main/mirror/index.ts), map the result/throw to an MCP envelope via `jsonResult` / `errorResult`. **All pipeline logic lives in `main/mirror/index.ts`** (`publishNote` / `unpublishNote` / `moveNote` / `getNote`, each taking `cfg` first) so every branch is unit-testable against a real temp file + a mocked Notion `fetch`. `src/tools/**/index.ts` is excluded from coverage — never put logic there.
+The wire names keep the `notion_mirror_*` namespace; only the package/env/server identity carries the `kb` prefix (`mcp-kb-notion-mirror`, `MCP_KB_NOTION_MIRROR_*`).
 
 ### Access-level gate — driven by annotations, not names
 
-[src/utils/access-level.ts](./src/utils/access-level.ts) `makeAccessGatedRegister(server, accessLevel, audit)` decides at startup whether to register each tool from `config.annotations`: `readOnlyHint:true → read`; `destructiveHint:true → destructive`; both explicitly `false → write`; anything else → `destructive` (fail-safe). A tool registers when its derived level is ≤ `cfg.accessLevel` (**default `write`** — this MCP is a publisher; `read` exposes only `get`, `destructive` adds `unpublish`). Presets live in [src/utils/annotations.ts](./src/utils/annotations.ts) (`READ_ONLY_REMOTE`, `WRITE_REMOTE`, `DESTRUCTIVE_REMOTE`) — every tool is open-world (calls Notion). New tools MUST set `annotations` to one of those presets.
+[src/utils/access-level.ts](./src/utils/access-level.ts) `makeAccessGatedRegister(server, accessLevel, audit)` derives each tool's level from `config.annotations`: `readOnlyHint:true → read`; `destructiveHint:true → destructive`; both explicitly `false → write`; anything else → `destructive` (fail-safe). A tool registers when its derived level is ≤ `cfg.accessLevel` (**default `write`**). Presets in [src/utils/annotations.ts](./src/utils/annotations.ts): `READ_ONLY_REMOTE`, `WRITE_REMOTE`, `DESTRUCTIVE_REMOTE` (every tool is open-world — it calls Notion). `notion_mirror_tree_publish` is `DESTRUCTIVE_REMOTE` (bulk mutation, defaults to dry-run); the tree read tools are `READ_ONLY_REMOTE`. New tools MUST set `annotations` to one of those presets.
 
 ### Single HTTP client
 
-All Notion API calls go through [src/main/notion-client/index.ts](./src/main/notion-client/index.ts): `createPage` / `updatePage` / `archivePage` / `setPageParent` / `getPage` / `getDatabase` / `getBlockChildren` / `appendBlockChildren` / `deleteBlock`. Every one takes a `NotionConfig` (the `notionToken`/`notionApiBaseUrl`/`notionApiVersion` slice of `Config`) as its first argument. It owns the Bearer header, `Notion-Version`, JSON content-type, the API-error→`NotionApiError` translation, and the 100-block-per-request cap (`createPage` appends overflow via PATCH /v1/blocks/{id}/children). Reuse it — no tool builds a raw `fetch`.
+All Notion API calls go through [src/main/notion-client/index.ts](./src/main/notion-client/index.ts). Every call takes a `NotionConfig` slice first. It owns the Bearer header, `Notion-Version`, JSON content-type, the API-error→`NotionApiError` translation, and the 100-block-per-request cap. Reuse it — no tool builds a raw `fetch`.
 
 ### Notion ids: normalize before they hit a URL path
 
-`normalizeId()` accepts a bare 32-hex id **or** a dashed UUID (callers may pass either as `parent.page_id`/`database_id`), lowercases, strips dashes, and throws on anything else. Every id substituted into an API path goes through it. Parent objects are passed to Notion **verbatim in the request body** (not the URL), so they're zod-format-validated only — not asserted (no path-injection risk).
-
-### Title property depends on the parent kind
-
-Under a `database_id` parent the title goes in the database's title-typed property (name varies per wiki; discovered + cached in [src/main/mirror/title-property.ts](./src/main/mirror/title-property.ts) via `GET /v1/databases/{id}`). Under a `page_id` parent the new page is a child page and Notion only accepts the reserved `title` property — **no lookup, no walk-up** (this is the proven behavior; do not "resolve" a database for page parents). Handled in `notion-client` `titleProperties`.
+`normalizeId()` accepts a bare 32-hex id or a dashed UUID, lowercases, strips dashes, throws otherwise. Every id substituted into an API path goes through it. Parent objects go to Notion verbatim in the request body (not the URL), so they're zod-format-validated only.
 
 ### `move` and the cross-parent-type silent failure
 
-`PATCH /v1/pages` silently ignores a parent change that crosses the page-id ↔ database-id boundary. `moveNote` detects it: it `GET`s the parent before, PATCHes, and — only when the parent **type** changed — re-`GET`s and errors if the parent is unchanged. Keep this guard.
-
-### Banner
-
-[src/main/mirror/banner.ts](./src/main/mirror/banner.ts) builds the 📘 callout from a template string the caller passes (`cfg.bannerTemplate`; `{date}` interpolated, `**bold**` via martian's `markdownToRichText`). An **empty** template returns `undefined` → publish omits the banner; if the body is also empty, publish errors (`Nothing to publish …`).
+`PATCH /v1/pages` silently ignores a parent change crossing the page-id ↔ database-id boundary. `moveNote` (and `publishNote` replace) detect it by GETting the parent before, PATCHing, and — only when the parent type changed — re-GETting and erroring if unchanged. Keep this guard.
 
 ### Frontmatter is edited by line surgery, NOT a YAML round-trip
 
-[src/main/mirror/frontmatter.ts](./src/main/mirror/frontmatter.ts) regex-matches the leading `---\n…\n---\n` block and edits per-line. `js-yaml` / `yaml` reorder keys and rewrite escaping, which would corrupt the KB's strict field-order rules. `upsertFrontmatterFields` replaces existing fields in place and inserts new ones after `notion_path` (falling back to `notion_source_url_secondary` / `notion_source_url`). The exact-string round-trip tests in [src/main/mirror/frontmatter.test.ts](./src/main/mirror/frontmatter.test.ts) guard against accidental reformatting — keep them green.
+[src/main/mirror/frontmatter.ts](./src/main/mirror/frontmatter.ts) regex-matches the leading block and edits per-line. A YAML library would reorder keys and rewrite escaping, corrupting the KB's strict field-order rules. Exact-string round-trip tests guard this — keep them green.
 
 ## Security Requirements
 
-This server holds a Notion token, reads a user-supplied path, and writes back to KB notes. New tools and changes MUST preserve every invariant:
+This server holds a Notion token, reads user-supplied paths, and writes back to KB notes. New tools and changes MUST preserve every invariant:
 
-1. **The token never leaves the process unredacted.** Read in [src/config/index.ts](./src/config/index.ts), attached as the Bearer header in [src/main/notion-client/index.ts](./src/main/notion-client/index.ts) only. `NotionApiError` carries status/code/body — never the token. Tests assert the token never appears in error messages.
-2. **Every `kb_path` runs through [src/utils/paths.ts](./src/utils/paths.ts) before any `fs.*` call.** `resolveKbNotePath(cfg.kbRoot, kbPath)` — two-layer guard: lexical (`..` rejected; confinement under `kbRoot` when set) plus realpath of the deepest existing ancestor (catches symlink escapes). When `kbRoot` is undefined, relative paths are rejected and absolute paths accepted unconfined (caller's responsibility). There is **no** `Pillars/` confinement — the MCP is layout-agnostic. Schemas in [src/tools/mirror/index.ts](./src/tools/mirror/index.ts) also reject `..` at the zod layer.
-3. **Notion ids are validated before substitution into an API path** via `normalizeId()` (see above). `extractPageIdFromUrl()` pulls a 32-hex id out of `notion_mirror_url`; a malformed URL errors before any call.
-4. **Destructive tools default to `dry_run: true`.** `notion_mirror_unpublish` only calls Notion / edits the note when `dry_run` is explicitly `false`. The `destructive` access level is opt-in.
-5. **Frontmatter write-backs are atomic.** `atomicWriteFile()` in [src/utils/atomic-write.ts](./src/utils/atomic-write.ts) writes a temp file then renames.
-6. **Zod schemas are `.strict()` with bounded sizes.** `kb_path` caps at 4096 chars; `parent.page_id`/`database_id` are regex-validated (32-hex or dashed UUID). Add bounds for every new field.
-7. **Errors return via `errorResult(...)`, not `throw`** at the tool boundary. `main/mirror` functions throw; the handler catches and maps. The audit-log wrapper depends on the `isError` envelope to log failures.
+1. **The token never leaves the process unredacted.** Read in [src/config/index.ts](./src/config/index.ts), attached as the Bearer header in [src/main/notion-client/index.ts](./src/main/notion-client/index.ts) only. `NotionApiError` carries status/code/body — never the token.
+2. **Every `kb_path` and `subtree` runs through [src/utils/paths.ts](./src/utils/paths.ts) before any `fs.*` call.** `resolveKbNotePath(cfg.kbRoot, p)` — lexical (`..` rejected; confined under `kbRoot` when set) plus realpath of the deepest existing ancestor (catches symlink escapes). The tree tools confine BOTH `subtree` and `kb_path` under `cfg.kbRoot` before walking. Schemas also reject `..` at the zod layer.
+3. **Notion ids are validated before substitution into an API path** via `normalizeId()`. `extractPageIdFromUrl()` pulls the id out of `notion_mirror_url`; a malformed URL errors before any call.
+4. **Destructive tools default to `dry_run: true`.** `notion_mirror_unpublish` and `notion_mirror_tree_publish` only mutate when `dry_run` is explicitly `false`. The `destructive` access level is opt-in.
+5. **Frontmatter write-backs are atomic** via `atomicWriteFile()`.
+6. **Zod schemas are `.strict()` with bounded sizes.** `kb_path` / `subtree` cap at 4096 chars; `parent` ids are regex-validated (32-hex or dashed UUID) via the shared `parentArg` in [src/utils/notion-args.ts](./src/utils/notion-args.ts).
+7. **Errors return via `errorResult(...)`, not `throw`** at the tool boundary. `main`/`orchestrator` functions throw; the handler catches and maps. The audit-log wrapper depends on the `isError` envelope.
+8. **Nothing reachable from a tool writes to stdout.** See [the stdout invariant](#nothing-reachable-from-a-tool-may-write-to-stdout) above.
 
 ## Testing
 
-- `bun run test:coverage` enforces 100% line/branch/function/statement coverage. The aggregators (`src/mcp-server/index.ts`, `src/tools/**/index.ts`) and the pure-data `src/utils/annotations.ts` are excluded — everything else stays fully covered. Pipeline logic lives in `main/mirror/index.ts` precisely so it's covered. Tests are co-located (`index.test.ts` beside `index.ts`).
-- Real Notion API calls are out of tests — the client is exercised through `fetch` mocks (`vi.stubGlobal('fetch', …)`).
-- Because config is injected (not read at import), tests build a `Config`/`NotionConfig`/`AuditConfig` literal and pass it — no `vi.resetModules()` + env dance. (A couple of modules keep process-lifetime caches — the title-property cache, the audit-log append queue/chmod flag — so their tests call the exported `_clear…`/reset hook or are still isolated as noted in-file.)
-- `bun run test:smoke` boots the built server over stdio and asserts the 4-tool wire surface. Keep `scripts/smoke.ts` `EXPECTED_TOOLS` in sync with the registration sites.
+- `bun run test:coverage` enforces 100% line/branch/function/statement coverage. Excluded: `src/mcp-server/index.ts`, `src/tools/**/index.ts`, `src/orchestrator/cli.ts` (entry points / wiring), and the pure-data `src/utils/annotations.ts` + `src/utils/notion-args.ts`. Everything else — including `orchestrator/api.ts` and `orchestrator/discover.ts` — stays fully covered. Tests are co-located.
+- Real Notion API calls are out of tests — the client is exercised through `fetch` mocks (`vi.stubGlobal('fetch', …)`). `orchestrator/api.test.ts` uses a small stateful fetch stub (records each created page's parent so the cross-parent-type guard doesn't false-fire on replace).
+- Config is injected, so tests build a `Config`/`OrchestratorSettings` literal and pass it. A couple of modules keep process-lifetime caches (title-property cache, audit-log append queue) — their tests use the exported reset hook.
+- `bun run test:smoke` boots the built server over stdio and asserts the 7-tool wire surface. Keep `scripts/smoke.ts` `EXPECTED_TOOLS` in sync with the two registration sites.
 
 ## Tool registration call sites
 
-Tools are registered in [src/tools/mirror/index.ts](./src/tools/mirror/index.ts). To survey the surface, `grep "registerTool" src/tools/*/index.ts`. README's [Tools](./README.md#tools) section tabulates them with purposes and I/O shapes.
+Tools are registered in [src/tools/mirror/index.ts](./src/tools/mirror/index.ts) and [src/tools/tree/index.ts](./src/tools/tree/index.ts). To survey the surface, `grep -r "registerTool" src/tools`. README's [Tools](./README.md#tools) section tabulates all 7 with purposes and I/O shapes.

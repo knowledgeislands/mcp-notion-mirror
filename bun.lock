@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@knowledgeislands/mcp-notion-mirror",
+      "name": "@knowledgeislands/mcp-kb-notion-mirror",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@tryfabric/martian": "^1.2.4",

@@ -38,7 +38,7 @@ import { convertMentionPlaceholders, rewriteWikilinks } from './wikilinks.js'
 export const MIRROR_FIELDS = ['notion_mirror_url', 'notion_mirror_published_at'] as const
 const MAX_CHILDREN_PER_REQUEST = 100
 
-/** Publish modes (Change in ENHANCEMENT-SPEC-02). `create` skips if mirrored; `replace` updates in place (URL preserved); `force` archives + recreates (URL changes). */
+/** Publish modes. `create` skips if mirrored; `replace` updates in place (URL preserved); `force` archives + recreates (URL changes). */
 export type PublishMode = 'create' | 'replace' | 'force'
 
 /** Optional publish extras: mode, legacy force alias, wikilink resolution, page icon. */
@@ -62,7 +62,7 @@ const refreshFooterSafe = async (cfg: Config, parentPageId: string): Promise<voi
   try {
     await refreshFooter(cfg, parentPageId)
   } catch (err) {
-    console.error(`mcp-notion-mirror: child-pages footer refresh failed for parent ${parentPageId}:`, err)
+    console.error(`mcp-kb-notion-mirror: child-pages footer refresh failed for parent ${parentPageId}:`, err)
   }
 }
 
@@ -120,7 +120,7 @@ const replaceBody = async (cfg: Config, pageId: string, children: unknown[]): Pr
 export const publishNote = async (cfg: Config, kbPath: string, parent: NotionParent, options: PublishOptions = {}): Promise<PublishResult> => {
   const mode: PublishMode = options.mode ?? (options.force ? 'force' : 'create')
   if (options.force && options.mode === undefined) {
-    console.error('mcp-notion-mirror: `force: true` is deprecated; pass `mode: "force"` instead.')
+    console.error('mcp-kb-notion-mirror: `force: true` is deprecated; pass `mode: "force"` instead.')
   }
 
   const { abs, raw, fields, hasFrontmatter } = await readNote(cfg, kbPath)
@@ -144,13 +144,27 @@ export const publishNote = async (cfg: Config, kbPath: string, parent: NotionPar
   if (existing && mode === 'replace') {
     const pageId = extractPageIdFromUrl(existing)
     if (!pageId) throw new Error(`Could not extract a 32-hex page id from notion_mirror_url: ${existing}`)
+    // Read parent before updatePage so we can detect the page_id ↔ database_id
+    // silent-failure case Notion exhibits on cross-type re-parents.
+    const before = await getPage(cfg, pageId)
     const page = await updatePage(cfg, pageId, { parent, title, titleProperty, icon: options.icon })
+    if (before.parent.type !== parent.type) {
+      const after = await getPage(cfg, pageId)
+      if (JSON.stringify(after.parent) === JSON.stringify(before.parent)) {
+        throw new Error(
+          'Notion silently ignored the parent change in replace mode — cannot move between page-id and database-id parents. Unpublish the note, then republish with mode: "create" under the new parent.'
+        )
+      }
+    }
     await replaceBody(cfg, pageId, children)
     const publishedAt = normalizePublishedAt(page.last_edited_time)
     await atomicWriteFile(abs, upsertFrontmatterFields(raw, { notion_mirror_published_at: publishedAt }))
-    // Body replace cleared this page's footer heading; regenerate it. Refresh the
-    // parent's footer too in case `replace` re-parented the page.
+    // Body replace cleared this page's footer heading; regenerate it. Refresh
+    // the OLD parent's footer if we just re-parented away from a page parent,
+    // and the new parent's footer if the new parent is a page.
     await refreshFooterSafe(cfg, pageId)
+    const oldParentId = pageParentId(before.parent)
+    if (oldParentId && oldParentId !== (parent.type === 'page_id' ? parent.page_id : undefined)) await refreshFooterSafe(cfg, oldParentId)
     if (parent.type === 'page_id') await refreshFooterSafe(cfg, parent.page_id)
     return { url: existing, page_id: pageId, published_at: publishedAt, mode }
   }

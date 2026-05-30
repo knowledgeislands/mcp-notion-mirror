@@ -20,9 +20,13 @@ export default defineConfig({
         // is exercised by `bun run server:mcp:inspect` and smoke tests.
         'src/mcp-server/index.ts',
         'src/tools/**/index.ts',
-        // Pure data: annotation presets are referenced only from tool
-        // registration sites (which are themselves excluded).
-        'src/utils/annotations.ts'
+        // CLI entry point — pure argv parsing + human-readable printing built
+        // on the api.ts return shapes (which ARE covered); exercised by hand.
+        'src/orchestrator/cli.ts',
+        // Pure data: annotation presets and the shared Notion-arg zod schemas
+        // are referenced only from tool registration sites (themselves excluded).
+        'src/utils/annotations.ts',
+        'src/utils/notion-args.ts'
       ],
       thresholds: {
         lines: 100,

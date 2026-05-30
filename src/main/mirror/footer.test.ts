@@ -8,12 +8,10 @@ const CONTENT = '1'.repeat(32)
 const CHILD_A = 'b'.repeat(32)
 const CHILD_B = 'c'.repeat(32)
 const SENT = 'd'.repeat(32)
-const OLD_BULLET = 'e'.repeat(32)
 
 const content = (id: string) => ({ id, type: 'paragraph', paragraph: { rich_text: [{ plain_text: 'body' }] } })
 const childPage = (id: string) => ({ id, type: 'child_page', child_page: { title: 'X' } })
 const heading = (id: string, text: string) => ({ id, type: 'heading_2', heading_2: { rich_text: [{ plain_text: text }] } })
-const oldBullet = (id: string) => ({ id, type: 'bulleted_list_item', bulleted_list_item: { rich_text: [{ plain_text: 'old' }] } })
 
 const childrenPage = (results: unknown[], next: string | null = null) => new Response(JSON.stringify({ results, has_more: next !== null, next_cursor: next }), { status: 200 })
 const ok = (body: unknown = {}) => new Response(JSON.stringify(body), { status: 200 })

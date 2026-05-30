@@ -1,8 +1,8 @@
 /**
  * Append-only JSONL audit log for tool invocations. Mirrors the sibling MCPs:
- * scope is controlled by MCP_NOTION_MIRROR_AUDIT_LOG (`off` / `writes` /
+ * scope is controlled by MCP_KB_NOTION_MIRROR_AUDIT_LOG (`off` / `writes` /
  * `all`), level is derived from each tool's MCP annotations, path defaults to
- * ~/.local/state/mcp-notion-mirror/audit.jsonl.
+ * ~/.local/state/mcp-kb-notion-mirror/audit.jsonl.
  *
  * Only the tool args are recorded — never the Notion token (it lives in env,
  * not in any tool argument). Failures to write the audit line are swallowed
@@ -31,7 +31,7 @@ export interface AuditEvent {
   args: unknown
 }
 
-const SERVER_NAME = 'mcp-notion-mirror'
+const SERVER_NAME = 'mcp-kb-notion-mirror'
 const MAX_ARG_CHARS = 4096
 
 const sanitizeArgs = (args: unknown): unknown => {
