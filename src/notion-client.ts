@@ -138,30 +138,6 @@ const titleProperties = (parent: NotionParent, title: string, titleProperty: str
   return { title: value }
 }
 
-// `format.page_full_width` is not in the documented public schema; Notion has
-// historically accepted it on POST/PATCH. If a write is rejected because of it
-// we learn that once, warn, and stop sending it for the rest of the process.
-let fullWidthUnsupported = false
-
-/**
- * POST or PATCH a page with an optional full-width hint. If Notion rejects the
- * hint with a 400, retry once without it (the page lands at default width) and
- * warn — so a write never fails because of `format.page_full_width`.
- */
-const pageWriteRequest = async (method: 'POST' | 'PATCH', apiPath: string, baseBody: Record<string, unknown>, fullWidth: boolean): Promise<NotionPageResponse> => {
-  const wantFullWidth = fullWidth && !fullWidthUnsupported
-  try {
-    return await request<NotionPageResponse>(method, apiPath, wantFullWidth ? { ...baseBody, format: { page_full_width: true } } : baseBody)
-  } catch (err) {
-    if (wantFullWidth && err instanceof NotionApiError && err.status === 400) {
-      fullWidthUnsupported = true
-      console.error('mcp-notion-mirror: Notion rejected the full-width hint (format.page_full_width); writing at default width from now on.')
-      return await request<NotionPageResponse>(method, apiPath, baseBody)
-    }
-    throw err
-  }
-}
-
 /**
  * Create a page under `parent`. Notion caps `children` at 100 per request, so
  * the first 100 blocks go in the create call and any remainder is appended in
@@ -169,14 +145,13 @@ const pageWriteRequest = async (method: 'POST' | 'PATCH', apiPath: string, baseB
  *
  * `titleProperty` is required for a database parent and ignored for a page
  * parent (where the title property is always the reserved `title`). `icon` (if
- * given) and full-width formatting are set in the SAME create call — never a
- * separate PATCH.
+ * given) is set in the SAME create call — never a separate PATCH.
  */
-export const createPage = async (params: { parent: NotionParent; title: string; children: unknown[]; titleProperty?: string; icon?: NotionIcon; fullWidth?: boolean }): Promise<CreatedPage> => {
-  const { parent, title, children, titleProperty, icon, fullWidth = true } = params
+export const createPage = async (params: { parent: NotionParent; title: string; children: unknown[]; titleProperty?: string; icon?: NotionIcon }): Promise<CreatedPage> => {
+  const { parent, title, children, titleProperty, icon } = params
   const base: Record<string, unknown> = { parent, properties: titleProperties(parent, title, titleProperty), children: children.slice(0, MAX_CHILDREN_PER_REQUEST) }
   if (icon) base.icon = icon
-  const page = await pageWriteRequest('POST', '/v1/pages', base, fullWidth)
+  const page = await request<NotionPageResponse>('POST', '/v1/pages', base)
   for (let i = MAX_CHILDREN_PER_REQUEST; i < children.length; i += MAX_CHILDREN_PER_REQUEST) {
     await appendBlockChildren(page.id, children.slice(i, i + MAX_CHILDREN_PER_REQUEST))
   }
@@ -184,15 +159,15 @@ export const createPage = async (params: { parent: NotionParent; title: string; 
 }
 
 /**
- * Update an existing page's parent, title property, icon, and full-width
- * formatting in place (single PATCH). Does NOT touch the page body — callers
- * replace block children separately. Returns the page's id/url/last_edited_time.
+ * Update an existing page's parent, title property, and icon in place (single
+ * PATCH). Does NOT touch the page body — callers replace block children
+ * separately. Returns the page's id/url/last_edited_time.
  */
-export const updatePage = async (pageId: string, params: { parent: NotionParent; title: string; titleProperty?: string; icon?: NotionIcon; fullWidth?: boolean }): Promise<UpdatedPage> => {
-  const { parent, title, titleProperty, icon, fullWidth = true } = params
+export const updatePage = async (pageId: string, params: { parent: NotionParent; title: string; titleProperty?: string; icon?: NotionIcon }): Promise<UpdatedPage> => {
+  const { parent, title, titleProperty, icon } = params
   const base: Record<string, unknown> = { parent, properties: titleProperties(parent, title, titleProperty) }
   if (icon) base.icon = icon
-  const page = await pageWriteRequest('PATCH', `/v1/pages/${normalizeId(pageId)}`, base, fullWidth)
+  const page = await request<NotionPageResponse>('PATCH', `/v1/pages/${normalizeId(pageId)}`, base)
   return { id: page.id, url: page.url, last_edited_time: page.last_edited_time }
 }
 

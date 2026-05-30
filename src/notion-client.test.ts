@@ -67,39 +67,13 @@ describe('notion-client (mcp-notion-mirror)', () => {
       expect(body.properties).toEqual({ title: { title: [{ text: { content: 'Child' } }] } })
     })
 
-    it('includes icon and full-width format in the POST body by default', async () => {
+    it('includes the icon in the POST body and never sends a format field', async () => {
       fetchMock.mockResolvedValueOnce(ok(PAGE_RESPONSE))
       const { createPage } = await import('./notion-client.js')
       await createPage({ parent: { type: 'page_id', page_id: PAGE_HEX }, title: 'C', children: [{ a: 1 }], icon: { type: 'emoji', emoji: '📚' } })
       const body = JSON.parse(fetchMock.mock.calls[0]?.[1].body)
       expect(body.icon).toEqual({ type: 'emoji', emoji: '📚' })
-      expect(body.format).toEqual({ page_full_width: true })
-    })
-
-    it('omits the format hint when full_width is false', async () => {
-      fetchMock.mockResolvedValueOnce(ok(PAGE_RESPONSE))
-      const { createPage } = await import('./notion-client.js')
-      await createPage({ parent: { type: 'page_id', page_id: PAGE_HEX }, title: 'C', children: [{ a: 1 }], fullWidth: false })
-      expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body).format).toBeUndefined()
-    })
-
-    it('retries once without the format hint when Notion 400s on it, then stops sending it', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'validation_error', message: 'format is not expected' }), { status: 400 }))
-      fetchMock.mockResolvedValueOnce(ok(PAGE_RESPONSE)) // retry without format
-      fetchMock.mockResolvedValueOnce(ok(PAGE_RESPONSE)) // a later create — should skip format
-      const { createPage } = await import('./notion-client.js')
-      await createPage({ parent: { type: 'page_id', page_id: PAGE_HEX }, title: 'C', children: [{ a: 1 }] })
-      expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body).format).toEqual({ page_full_width: true }) // first attempt
-      expect(JSON.parse(fetchMock.mock.calls[1]?.[1].body).format).toBeUndefined() // retry
-      await createPage({ parent: { type: 'page_id', page_id: PAGE_HEX }, title: 'C2', children: [{ a: 1 }] })
-      expect(JSON.parse(fetchMock.mock.calls[2]?.[1].body).format).toBeUndefined() // learned: no format
-    })
-
-    it('does not swallow non-400 errors as a full-width problem', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'unauthorized', message: 'no' }), { status: 401 }))
-      const { createPage, NotionApiError } = await import('./notion-client.js')
-      await expect(createPage({ parent: { type: 'page_id', page_id: PAGE_HEX }, title: 'C', children: [{ a: 1 }] })).rejects.toThrow(NotionApiError)
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(body.format).toBeUndefined()
     })
 
     it('throws when a database parent is given without a title property name', async () => {

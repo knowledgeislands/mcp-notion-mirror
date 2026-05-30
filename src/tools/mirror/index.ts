@@ -46,7 +46,6 @@ const publishInput = z
       ),
     force: z.boolean().optional().describe('Deprecated: legacy alias for mode:"force". Prefer `mode`.'),
     icon: iconArg.optional(),
-    full_width: z.boolean().default(true).describe('Lay the page out full-width (default true). No-op if the Notion API rejects the hint — the page lands at default width.'),
     link_map: linkMapArg.optional()
   })
   .strict()
@@ -81,7 +80,6 @@ Args:
     A non-mirrored note is created in every mode.
   - force (boolean, deprecated): legacy alias for mode:"force". Prefer mode.
   - icon (object, optional): { type: "emoji", emoji } or { type: "external", external: { url } }. Page icon, passed to Notion verbatim. Omit for none.
-  - full_width (boolean, default true): lay the page out full-width. No-op if Notion rejects the hint.
   - link_map (object, optional): { "[[target]] text": "mirror url" }. Resolved wikilinks become Notion @mentions; unresolved ones render italic. Omit/empty → all italic.
 
 Returns:
@@ -97,9 +95,9 @@ Errors:
       inputSchema: publishInput,
       annotations: WRITE_REMOTE
     },
-    async ({ kb_path, parent, mode, force, icon, full_width, link_map }) => {
+    async ({ kb_path, parent, mode, force, icon, link_map }) => {
       try {
-        return jsonResult(await publishNote(kb_path, parent as NotionParent, { mode, force, icon: icon as NotionIcon | undefined, fullWidth: full_width, linkMap: link_map }))
+        return jsonResult(await publishNote(kb_path, parent as NotionParent, { mode, force, icon: icon as NotionIcon | undefined, linkMap: link_map }))
       } catch (err) {
         return errorResult('publishing note', err)
       }

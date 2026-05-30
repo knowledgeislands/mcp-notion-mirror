@@ -40,13 +40,12 @@ const MAX_CHILDREN_PER_REQUEST = 100
 /** Publish modes (Change in ENHANCEMENT-SPEC-02). `create` skips if mirrored; `replace` updates in place (URL preserved); `force` archives + recreates (URL changes). */
 export type PublishMode = 'create' | 'replace' | 'force'
 
-/** Optional publish extras: mode, legacy force alias, wikilink resolution, page icon, full-width. */
+/** Optional publish extras: mode, legacy force alias, wikilink resolution, page icon. */
 export interface PublishOptions {
   mode?: PublishMode
   /** @deprecated legacy alias for `mode: "force"`. */
   force?: boolean
   icon?: NotionIcon
-  fullWidth?: boolean
   linkMap?: Record<string, string>
 }
 
@@ -144,7 +143,7 @@ export const publishNote = async (kbPath: string, parent: NotionParent, options:
   if (existing && mode === 'replace') {
     const pageId = extractPageIdFromUrl(existing)
     if (!pageId) throw new Error(`Could not extract a 32-hex page id from notion_mirror_url: ${existing}`)
-    const page = await updatePage(pageId, { parent, title, titleProperty, icon: options.icon, fullWidth: options.fullWidth })
+    const page = await updatePage(pageId, { parent, title, titleProperty, icon: options.icon })
     await replaceBody(pageId, children)
     const publishedAt = normalizePublishedAt(page.last_edited_time)
     await atomicWriteFile(abs, upsertFrontmatterFields(raw, { notion_mirror_published_at: publishedAt }))
@@ -161,7 +160,7 @@ export const publishNote = async (kbPath: string, parent: NotionParent, options:
     if (oldId) await archivePage(oldId).catch(() => undefined)
   }
 
-  const page = await createPage({ parent, title, children, titleProperty, icon: options.icon, fullWidth: options.fullWidth })
+  const page = await createPage({ parent, title, children, titleProperty, icon: options.icon })
   const publishedAt = normalizePublishedAt(page.created_time)
   await atomicWriteFile(abs, upsertFrontmatterFields(raw, { notion_mirror_url: page.url, notion_mirror_published_at: publishedAt }))
 
