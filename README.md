@@ -226,7 +226,7 @@ bun run server:mcp:dev      # bun --watch, runs the server from TS source
 bun run server:mcp:inspect  # MCP Inspector against the TS source
 ```
 
-Both set `NODE_ENV=development`, so a local `.env.development` is auto-loaded.
+Both set `NODE_ENV=development`, so a local `.env.development` is auto-loaded. Copy [`.env.example`](./.env.example) to `.env.development` and fill in your token to get started; it documents every variable from the table above.
 
 ## Frontmatter contract
 
