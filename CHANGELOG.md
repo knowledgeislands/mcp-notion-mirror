@@ -9,14 +9,13 @@
   - `replace` — update an existing page's body + properties **in place**, preserving its URL. Deletes the old body blocks and re-appends the new body above the page's native child links (child pages preserved); updates `notion_mirror_published_at` but not `notion_mirror_url`. If the page is re-parented, re-issues the parent change.
   - `force` — archive the existing page and create a new one (URL changes).
   - `force: true` is kept as a deprecated alias for `mode: "force"` (warns).
-- New `notion-client` calls: `updatePage` (PATCH page properties/icon/parent/full-width) and `appendBlockChildren` now returns the created block ids and accepts an `after` anchor. Full-width handling factored into a shared `pageWriteRequest` used by both create and update.
+- New `notion-client` calls: `updatePage` (PATCH page properties/icon/parent) and `appendBlockChildren` now returns the created block ids and accepts an `after` anchor.
 - Caveat: `replace` is body-destructive — block-level comments on deleted blocks are lost (page-level comments and child pages are preserved). Documented in the tool description and README.
 
-`feat: publish accepts icon/full_width/link_map; parent child-pages footer maintained automatically by publish/unpublish/move.`
+`feat: publish accepts icon/link_map; parent child-pages footer maintained automatically by publish/unpublish/move.`
 
-- `notion_mirror_publish` gains three optional args:
+- `notion_mirror_publish` gains two optional args:
   - `icon` — `{ type: "emoji", emoji }` or `{ type: "external", external: { url } }`, set in the page-create call.
-  - `full_width` (default `true`) — sets `format.page_full_width` on create; if Notion rejects the hint, the create is retried once without it (default width) and a warning is logged.
   - `link_map` — wikilink target → mirror URL. Resolved `[[…]]` become Notion page mentions; unresolved ones render as italic text. The caller builds the map (the MCP never walks the KB).
 - **Child-pages footer (mirror-only).** Page-parented mirror pages get a single `Child Pages` `heading_2` placed immediately above Notion's native `child_page` links (no duplicate mention bullets, no folder emoji). Refreshed automatically after `publish` (page parent), real `unpublish` (page parent), and `move` (both old and new page parents); a refresh also cleans up legacy `📂 Child Pages` heading + bullets. Identified by a sentinel `heading_2` (`Child Pages`) — a future mirror→KB reader must strip it. Refreshes are serialised per parent and never fail the primary operation.
 - New modules: `src/wikilinks.ts` (pure rewrite + mention conversion), `src/footer.ts` (`buildFooterBlocks` + locked `refreshFooter`). New `notion-client` block helpers: `getBlockChildren` (paginated), `appendBlockChildren` (with optional `after` anchor), `deleteBlock`.
