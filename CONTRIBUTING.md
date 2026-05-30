@@ -35,12 +35,13 @@ You'll need a Notion internal-integration secret in `MCP_NOTION_MIRROR_TOKEN` an
 
 ### Code
 
-- **TypeScript ES modules** — `"type": "module"`, internal imports use `.js` extensions (e.g. `from './notion-client.js'`) so `tsc` emits valid JS.
+- **TypeScript ES modules** — `"type": "module"`, internal imports use `.js` extensions (e.g. `from '../notion-client/index.js'`) so `tsc` emits valid JS.
 - **Arrow functions** for top-level declarations (`export const foo = () => …`).
-- **No bare `fetch`** in tool callbacks — go through `src/notion-client.ts` so auth, the `Notion-Version` header, encoding, the 100-block chunking, and error translation stay centralised.
-- **No bare `fs.*` on a user path** — resolve through `src/utils/paths.ts` first. Write-backs go through `atomicWriteFile`.
-- **No YAML round-trip** — edit frontmatter by line surgery in `src/frontmatter.ts`; a YAML library would reorder keys and rewrite escaping.
-- **Input validation**: every `kb_path` / `root` carries the `..`-rejecting refine and a length bound. Page ids are validated with `assertPageId` before hitting an API path. New schemas must continue this.
+- **Config is injected, not imported as a singleton** — `loadConfig()` (in `src/config/index.ts`) builds a `Config`; `main/` functions take it (or its needed slice) as the first arg. Nothing reads env at import time.
+- **No bare `fetch`** in tool callbacks — go through `src/main/notion-client/index.ts` so auth, the `Notion-Version` header, encoding, the 100-block chunking, and error translation stay centralised.
+- **No bare `fs.*` on a user path** — resolve through `src/utils/paths.ts` first (`resolveKbNotePath(kbRoot, kbPath)`). Write-backs go through `atomicWriteFile`.
+- **No YAML round-trip** — edit frontmatter by line surgery in `src/main/mirror/frontmatter.ts`; a YAML library would reorder keys and rewrite escaping.
+- **Input validation**: every `kb_path` / `root` carries the `..`-rejecting refine and a length bound. Notion ids are validated with `normalizeId` before hitting an API path. New schemas must continue this.
 - **Errors**: tools return MCP errors via `errorResult(...)`; structured results via `jsonResult(...)`. Never `throw` from a tool callback — the audit-log wrapper depends on the MCP `isError` envelope.
 - **Annotations**: be honest with `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` on every tool registration. Use a preset from `src/utils/annotations.ts`.
 

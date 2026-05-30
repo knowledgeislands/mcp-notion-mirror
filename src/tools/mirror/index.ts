@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { getNote, moveNote, publishNote, unpublishNote } from '../../mirror-ops.js'
-import type { NotionIcon, NotionParent } from '../../notion-client.js'
+import type { Config } from '../../config/index.js'
+import { getNote, moveNote, publishNote, unpublishNote } from '../../main/mirror/index.js'
+import type { NotionIcon, NotionParent } from '../../main/notion-client/index.js'
 import { DESTRUCTIVE_REMOTE, READ_ONLY_REMOTE, WRITE_REMOTE } from '../../utils/annotations.js'
 import { errorResult, jsonResult } from '../../utils/results.js'
 
@@ -63,7 +64,7 @@ const unpublishInput = z
 const moveInput = z.object({ kb_path: kbPathArg, parent: parentArg }).strict()
 const getInput = z.object({ kb_path: kbPathArg }).strict()
 
-export const registerMirrorTools = (server: McpServer): void => {
+export const registerMirrorTools = (server: McpServer, cfg: Config): void => {
   server.registerTool(
     'notion_mirror_publish',
     {
@@ -97,7 +98,7 @@ Errors:
     },
     async ({ kb_path, parent, mode, force, icon, link_map }) => {
       try {
-        return jsonResult(await publishNote(kb_path, parent as NotionParent, { mode, force, icon: icon as NotionIcon | undefined, linkMap: link_map }))
+        return jsonResult(await publishNote(cfg, kb_path, parent as NotionParent, { mode, force, icon: icon as NotionIcon | undefined, linkMap: link_map }))
       } catch (err) {
         return errorResult('publishing note', err)
       }
@@ -127,7 +128,7 @@ Errors:
     },
     async ({ kb_path, parent }) => {
       try {
-        return jsonResult(await moveNote(kb_path, parent as NotionParent))
+        return jsonResult(await moveNote(cfg, kb_path, parent as NotionParent))
       } catch (err) {
         return errorResult('moving note', err)
       }
@@ -158,7 +159,7 @@ Errors:
     },
     async ({ kb_path, dry_run }) => {
       try {
-        return jsonResult(await unpublishNote(kb_path, dry_run))
+        return jsonResult(await unpublishNote(cfg, kb_path, dry_run))
       } catch (err) {
         return errorResult('unpublishing note', err)
       }
@@ -186,7 +187,7 @@ Errors:
     },
     async ({ kb_path }) => {
       try {
-        return jsonResult(await getNote(kb_path))
+        return jsonResult(await getNote(cfg, kb_path))
       } catch (err) {
         return errorResult('getting note mirror', err)
       }

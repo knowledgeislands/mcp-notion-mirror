@@ -6,12 +6,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     fileParallelism: false,
-    env: {
-      // Bogus token so config.ts boot validation passes when tests instantiate
-      // modules that import config. The token is never used to make a real call
-      // — the Notion client is exercised through `fetch` mocks.
-      MCP_NOTION_MIRROR_TOKEN: 'ntn_placeholder'
-    },
+    // No env seeding needed: config is loaded explicitly via loadConfig() and
+    // passed into calls, so nothing reads process.env at import time. Tests
+    // build their own Config (or call loadConfig with an explicit env object).
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

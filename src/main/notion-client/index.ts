@@ -4,12 +4,15 @@
  * header, the `Notion-Version` header, the JSON content type, and the
  * API-error → typed-error translation.
  *
- * Security: the token is read from config and attached as the Bearer header
- * only. It is NEVER interpolated into an error message, log line, or tool
- * output — NotionApiError carries the response status/code/body, none of which
- * contains the secret.
+ * Security: the token comes from the caller-supplied Config and is attached as
+ * the Bearer header only. It is NEVER interpolated into an error message, log
+ * line, or tool output — NotionApiError carries the response status/code/body,
+ * none of which contains the secret.
  */
-import { NOTION_API_BASE_URL, NOTION_API_VERSION, NOTION_TOKEN } from './config.js'
+import type { Config } from '../../config/index.js'
+
+/** The Notion-connection slice of Config every request needs. */
+export type NotionConfig = Pick<Config, 'notionToken' | 'notionApiBaseUrl' | 'notionApiVersion'>
 
 /** Notion's hard cap on `children` per page-create / block-append request. */
 const MAX_CHILDREN_PER_REQUEST = 100
@@ -27,17 +30,17 @@ export class NotionApiError extends Error {
   }
 }
 
-const headers = (): Record<string, string> => ({
-  Authorization: `Bearer ${NOTION_TOKEN}`,
-  'Notion-Version': NOTION_API_VERSION,
+const headers = (cfg: NotionConfig): Record<string, string> => ({
+  Authorization: `Bearer ${cfg.notionToken}`,
+  'Notion-Version': cfg.notionApiVersion,
   Accept: 'application/json',
   'Content-Type': 'application/json'
 })
 
-const request = async <T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', apiPath: string, body?: unknown): Promise<T> => {
-  const resp = await fetch(`${NOTION_API_BASE_URL}${apiPath}`, {
+const request = async <T>(cfg: NotionConfig, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', apiPath: string, body?: unknown): Promise<T> => {
+  const resp = await fetch(`${cfg.notionApiBaseUrl}${apiPath}`, {
     method,
-    headers: headers(),
+    headers: headers(cfg),
     body: body === undefined ? undefined : JSON.stringify(body)
   })
   const text = await resp.text()
@@ -97,7 +100,7 @@ export interface NotionDatabase {
 }
 
 /** Raw `GET /v1/databases/{id}`. The title-property cache lives in title-property.ts. */
-export const getDatabase = (databaseId: string): Promise<NotionDatabase> => request<NotionDatabase>('GET', `/v1/databases/${normalizeId(databaseId)}`)
+export const getDatabase = (cfg: NotionConfig, databaseId: string): Promise<NotionDatabase> => request<NotionDatabase>(cfg, 'GET', `/v1/databases/${normalizeId(databaseId)}`)
 
 interface NotionPageResponse {
   id: string
@@ -147,13 +150,13 @@ const titleProperties = (parent: NotionParent, title: string, titleProperty: str
  * parent (where the title property is always the reserved `title`). `icon` (if
  * given) is set in the SAME create call — never a separate PATCH.
  */
-export const createPage = async (params: { parent: NotionParent; title: string; children: unknown[]; titleProperty?: string; icon?: NotionIcon }): Promise<CreatedPage> => {
+export const createPage = async (cfg: NotionConfig, params: { parent: NotionParent; title: string; children: unknown[]; titleProperty?: string; icon?: NotionIcon }): Promise<CreatedPage> => {
   const { parent, title, children, titleProperty, icon } = params
   const base: Record<string, unknown> = { parent, properties: titleProperties(parent, title, titleProperty), children: children.slice(0, MAX_CHILDREN_PER_REQUEST) }
   if (icon) base.icon = icon
-  const page = await request<NotionPageResponse>('POST', '/v1/pages', base)
+  const page = await request<NotionPageResponse>(cfg, 'POST', '/v1/pages', base)
   for (let i = MAX_CHILDREN_PER_REQUEST; i < children.length; i += MAX_CHILDREN_PER_REQUEST) {
-    await appendBlockChildren(page.id, children.slice(i, i + MAX_CHILDREN_PER_REQUEST))
+    await appendBlockChildren(cfg, page.id, children.slice(i, i + MAX_CHILDREN_PER_REQUEST))
   }
   return { id: page.id, url: page.url, created_time: page.created_time }
 }
@@ -163,22 +166,22 @@ export const createPage = async (params: { parent: NotionParent; title: string; 
  * PATCH). Does NOT touch the page body — callers replace block children
  * separately. Returns the page's id/url/last_edited_time.
  */
-export const updatePage = async (pageId: string, params: { parent: NotionParent; title: string; titleProperty?: string; icon?: NotionIcon }): Promise<UpdatedPage> => {
+export const updatePage = async (cfg: NotionConfig, pageId: string, params: { parent: NotionParent; title: string; titleProperty?: string; icon?: NotionIcon }): Promise<UpdatedPage> => {
   const { parent, title, titleProperty, icon } = params
   const base: Record<string, unknown> = { parent, properties: titleProperties(parent, title, titleProperty) }
   if (icon) base.icon = icon
-  const page = await request<NotionPageResponse>('PATCH', `/v1/pages/${normalizeId(pageId)}`, base)
+  const page = await request<NotionPageResponse>(cfg, 'PATCH', `/v1/pages/${normalizeId(pageId)}`, base)
   return { id: page.id, url: page.url, last_edited_time: page.last_edited_time }
 }
 
 /** Archive (soft-delete) a page. Idempotent — archiving an archived page is a no-op success. */
-export const archivePage = async (pageId: string): Promise<void> => {
-  await request('PATCH', `/v1/pages/${normalizeId(pageId)}`, { archived: true })
+export const archivePage = async (cfg: NotionConfig, pageId: string): Promise<void> => {
+  await request(cfg, 'PATCH', `/v1/pages/${normalizeId(pageId)}`, { archived: true })
 }
 
 /** Re-parent a page. Notion moves the page (and its content) to the new parent; the URL is stable. */
-export const setPageParent = async (pageId: string, parent: NotionParent): Promise<void> => {
-  await request('PATCH', `/v1/pages/${normalizeId(pageId)}`, { parent })
+export const setPageParent = async (cfg: NotionConfig, pageId: string, parent: NotionParent): Promise<void> => {
+  await request(cfg, 'PATCH', `/v1/pages/${normalizeId(pageId)}`, { parent })
 }
 
 export interface FetchedPage {
@@ -211,8 +214,8 @@ const titleOf = (properties: Record<string, unknown>): string => {
 }
 
 /** Fetch a page, returning its id/url, raw Notion `parent` object, timestamps, archived flag, and title. */
-export const getPage = async (pageId: string): Promise<FetchedPage> => {
-  const page = await request<NotionPageResponse>('GET', `/v1/pages/${normalizeId(pageId)}`)
+export const getPage = async (cfg: NotionConfig, pageId: string): Promise<FetchedPage> => {
+  const page = await request<NotionPageResponse>(cfg, 'GET', `/v1/pages/${normalizeId(pageId)}`)
   return {
     id: page.id,
     url: page.url,
@@ -242,13 +245,13 @@ interface BlockChildrenPage {
  * All immediate children of a block/page, following pagination (Notion returns
  * 100 per page). Returns the blocks in Notion's natural (creation) order.
  */
-export const getBlockChildren = async (blockId: string): Promise<NotionBlock[]> => {
+export const getBlockChildren = async (cfg: NotionConfig, blockId: string): Promise<NotionBlock[]> => {
   const id = normalizeId(blockId)
   const all: NotionBlock[] = []
   let cursor: string | null = null
   do {
     const qs = cursor ? `?page_size=100&start_cursor=${encodeURIComponent(cursor)}` : '?page_size=100'
-    const page: BlockChildrenPage = await request<BlockChildrenPage>('GET', `/v1/blocks/${id}/children${qs}`)
+    const page: BlockChildrenPage = await request<BlockChildrenPage>(cfg, 'GET', `/v1/blocks/${id}/children${qs}`)
     all.push(...page.results)
     cursor = page.has_more ? page.next_cursor : null
   } while (cursor)
@@ -260,13 +263,13 @@ export const getBlockChildren = async (blockId: string): Promise<NotionBlock[]> 
  * Pass `after` (a sibling block id) to position the new blocks right after it
  * instead of at the end.
  */
-export const appendBlockChildren = async (blockId: string, children: unknown[], after?: string): Promise<string[]> => {
+export const appendBlockChildren = async (cfg: NotionConfig, blockId: string, children: unknown[], after?: string): Promise<string[]> => {
   const body = after === undefined ? { children } : { children, after: normalizeId(after) }
-  const resp = await request<{ results?: Array<{ id: string }> }>('PATCH', `/v1/blocks/${normalizeId(blockId)}/children`, body)
+  const resp = await request<{ results?: Array<{ id: string }> }>(cfg, 'PATCH', `/v1/blocks/${normalizeId(blockId)}/children`, body)
   return (resp.results ?? []).map((b) => b.id)
 }
 
 /** Delete (archive) a single block. */
-export const deleteBlock = async (blockId: string): Promise<void> => {
-  await request('DELETE', `/v1/blocks/${normalizeId(blockId)}`)
+export const deleteBlock = async (cfg: NotionConfig, blockId: string): Promise<void> => {
+  await request(cfg, 'DELETE', `/v1/blocks/${normalizeId(blockId)}`)
 }

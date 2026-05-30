@@ -18,7 +18,7 @@
  * are serialised per parent id (in-memory lock) so concurrent sibling
  * publishes don't race.
  */
-import { appendBlockChildren, deleteBlock, getBlockChildren, type NotionBlock } from './notion-client.js'
+import { appendBlockChildren, deleteBlock, getBlockChildren, type NotionBlock, type NotionConfig } from '../notion-client/index.js'
 
 /** The sentinel heading text that marks the footer. */
 export const SENTINEL_TEXT = 'Child Pages'
@@ -39,8 +39,8 @@ const isSentinel = (block: NotionBlock): boolean => {
   return text === SENTINEL_TEXT || text === LEGACY_SENTINEL_TEXT
 }
 
-const doRefresh = async (parentPageId: string): Promise<void> => {
-  const blocks = await getBlockChildren(parentPageId)
+const doRefresh = async (cfg: NotionConfig, parentPageId: string): Promise<void> => {
+  const blocks = await getBlockChildren(cfg, parentPageId)
   const hasChildren = blocks.some((b) => b.type === 'child_page')
 
   // Remove the existing footer: the sentinel heading and any following blocks
@@ -51,7 +51,7 @@ const doRefresh = async (parentPageId: string): Promise<void> => {
   if (sentinelIdx !== -1) {
     for (const block of blocks.slice(sentinelIdx)) {
       if (block.type !== 'child_page') {
-        await deleteBlock(block.id)
+        await deleteBlock(cfg, block.id)
         deleted.add(block.id)
       }
     }
@@ -72,7 +72,7 @@ const doRefresh = async (parentPageId: string): Promise<void> => {
     }
     prevId = block.id
   }
-  await appendBlockChildren(parentPageId, buildFooterBlocks(), anchorId)
+  await appendBlockChildren(cfg, parentPageId, buildFooterBlocks(), anchorId)
 }
 
 const footerLocks = new Map<string, Promise<unknown>>()
@@ -83,10 +83,10 @@ const footerLocks = new Map<string, Promise<unknown>>()
  * same parent run one-at-a-time. The returned promise rejects if THIS refresh
  * fails; the per-parent chain continues regardless.
  */
-export const refreshFooter = (parentPageId: string): Promise<void> => {
+export const refreshFooter = (cfg: NotionConfig, parentPageId: string): Promise<void> => {
   // The stored promise is always already-caught, so `prev` never rejects.
   const prev = footerLocks.get(parentPageId) ?? Promise.resolve()
-  const next = prev.then(() => doRefresh(parentPageId))
+  const next = prev.then(() => doRefresh(cfg, parentPageId))
   footerLocks.set(
     parentPageId,
     next.catch(() => {})

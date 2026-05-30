@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+`refactor: adopt the workspace MCP layout — config is loaded (loadConfig) and passed explicitly into every main call; no module-level config singleton.`
+
+- New layout: `src/config/index.ts` (`loadConfig(env?) → Config`), `src/mcp-server/` (server wrapper), `src/tools/` (tool defs), `src/main/<area>/index.ts` (implementation usable from scripts — `main/notion-client/`, `main/mirror/`), `src/utils/` (cross-MCP reusable). Tests are co-located.
+- Every `main` function takes `Config` (or its slice) as the first argument: `publishNote(cfg, …)`, `createPage(cfg, …)`. `utils` take the specific primitive — `resolveKbNotePath(kbRoot, …)`, `withAuditLog(auditConfig, …)`, `makeAccessGatedRegister(server, accessLevel, audit)`. Nothing reads env at import time, so the code runs unchanged from a script (`loadConfig()` then call directly) or the MCP server.
+- No behaviour change: the 4-tool surface, semantics, and wire contract are identical.
+
 `feat: publish gains mode: "replace" — in-place body+properties update that preserves the page URL. Enables stable @mention resolution across multiple passes. force boolean kept as backwards-compat alias for mode: "force".`
 
 - `notion_mirror_publish` replaces the `force` boolean with a tri-state `mode`:
@@ -18,7 +24,7 @@
   - `icon` — `{ type: "emoji", emoji }` or `{ type: "external", external: { url } }`, set in the page-create call.
   - `link_map` — wikilink target → mirror URL. Resolved `[[…]]` become Notion page mentions; unresolved ones render as italic text. The caller builds the map (the MCP never walks the KB).
 - **Child-pages footer (mirror-only).** Page-parented mirror pages get a single `Child Pages` `heading_2` placed immediately above Notion's native `child_page` links (no duplicate mention bullets, no folder emoji). Refreshed automatically after `publish` (page parent), real `unpublish` (page parent), and `move` (both old and new page parents); a refresh also cleans up legacy `📂 Child Pages` heading + bullets. Identified by a sentinel `heading_2` (`Child Pages`) — a future mirror→KB reader must strip it. Refreshes are serialised per parent and never fail the primary operation.
-- New modules: `src/wikilinks.ts` (pure rewrite + mention conversion), `src/footer.ts` (`buildFooterBlocks` + locked `refreshFooter`). New `notion-client` block helpers: `getBlockChildren` (paginated), `appendBlockChildren` (with optional `after` anchor), `deleteBlock`.
+- New modules: `src/main/mirror/wikilinks.ts` (pure rewrite + mention conversion), `src/main/mirror/footer.ts` (`buildFooterBlocks` + locked `refreshFooter`). New `notion-client` block helpers: `getBlockChildren` (paginated), `appendBlockChildren` (with optional `after` anchor), `deleteBlock`.
 
 ## 1.0.0
 

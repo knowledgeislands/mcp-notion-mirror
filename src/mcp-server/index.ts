@@ -33,23 +33,30 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { ACCESS_LEVEL, AUDIT_LOG_MODE, AUDIT_LOG_PATH, KB_ROOT, NOTION_API_BASE_URL } from '../config.js'
+import { loadConfig } from '../config/index.js'
 import { registerMirrorTools } from '../tools/mirror/index.js'
 import { makeAccessGatedRegister } from '../utils/access-level.js'
 
+const config = loadConfig()
+
 console.error(`mcp-notion-mirror starting...`)
-console.error(`  MCP_NOTION_MIRROR_API_BASE_URL=${NOTION_API_BASE_URL}`)
-console.error(`  MCP_NOTION_MIRROR_KB_ROOT=${KB_ROOT ?? '(unset — kb_path must be absolute)'}`)
-console.error(`  MCP_NOTION_MIRROR_ACCESS_LEVEL=${ACCESS_LEVEL}`)
-console.error(`  MCP_NOTION_MIRROR_AUDIT_LOG=${AUDIT_LOG_MODE}${AUDIT_LOG_MODE === 'off' ? '' : ` (path: ${AUDIT_LOG_PATH})`}`)
+console.error(`  MCP_NOTION_MIRROR_API_BASE_URL=${config.notionApiBaseUrl}`)
+console.error(`  MCP_NOTION_MIRROR_KB_ROOT=${config.kbRoot ?? '(unset — kb_path must be absolute)'}`)
+console.error(`  MCP_NOTION_MIRROR_ACCESS_LEVEL=${config.accessLevel}`)
+console.error(`  MCP_NOTION_MIRROR_AUDIT_LOG=${config.auditLogMode}${config.auditLogMode === 'off' ? '' : ` (path: ${config.auditLogPath})`}`)
 
 const server = new McpServer({
   name: 'mcp-notion-mirror',
   version: '1.0.0'
 })
-server.registerTool = makeAccessGatedRegister(server)
+server.registerTool = makeAccessGatedRegister(server, config.accessLevel, {
+  mode: config.auditLogMode,
+  path: config.auditLogPath,
+  maxBytes: config.auditLogMaxBytes,
+  keep: config.auditLogKeep
+})
 
-registerMirrorTools(server)
+registerMirrorTools(server, config)
 
 const main = async (): Promise<void> => {
   const transport = new StdioServerTransport()

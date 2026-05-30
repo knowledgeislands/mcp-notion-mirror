@@ -1,24 +1,22 @@
 /**
  * KB path validation. Every `kb_path` runs through here before any `fs.*` call.
+ * Config-agnostic: the caller passes the `kbRoot` (from its Config) rather than
+ * this module reading any singleton, so it's reusable across MCPs.
  *
  * Two-layer guard, matching the sibling MCPs:
- *   1. Lexical — reject `..` segments and (when KB_ROOT is set) confine the
- *      normalized path under KB_ROOT.
+ *   1. Lexical — reject `..` segments and (when `kbRoot` is set) confine the
+ *      normalized path under `kbRoot`.
  *   2. Realpath — resolve the deepest existing ancestor with `fs.realpathSync`
  *      and re-check confinement, catching symlink escapes that survive the
  *      lexical check.
  *
- * When KB_ROOT is unset, relative paths are rejected (the MCP can't anchor
+ * When `kbRoot` is undefined, relative paths are rejected (we can't anchor
  * them) and absolute paths are accepted after the `..` check — there is no
  * confinement because there is no root to confine against (caller's
- * responsibility, per REWRITE-SPEC-v1 §Configuration).
- *
- * Unlike the v0.x server, there is NO `Pillars/` confinement: this MCP is
- * file-aware but layout-agnostic. The orchestrator owns folder conventions.
+ * responsibility). There is NO layout (`Pillars/` etc.) confinement.
  */
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { KB_ROOT } from '../config.js'
 
 export class KbPathError extends Error {
   constructor(message: string) {
@@ -53,11 +51,12 @@ const assertWithin = (root: string, candidate: string): void => {
 }
 
 /**
- * Resolve and validate a single KB note path. Returns the realpath of the note
- * (the note itself need not exist yet, but its directory chain is realpath-ed).
- * Confined under KB_ROOT when set; otherwise only absolute paths are accepted.
+ * Resolve and validate a single KB note path against `kbRoot`. Returns the
+ * realpath of the note (the note itself need not exist yet, but its directory
+ * chain is realpath-ed). Confined under `kbRoot` when set; otherwise only
+ * absolute paths are accepted.
  */
-export const resolveKbNotePath = (kbPath: string): string => {
+export const resolveKbNotePath = (kbRoot: string | undefined, kbPath: string): string => {
   if (kbPath.trim() === '') throw new KbPathError('kb_path must not be empty')
   if (hasParentSegment(kbPath)) throw new KbPathError(`kb_path must not contain ".." segments: ${kbPath}`)
 
@@ -65,16 +64,16 @@ export const resolveKbNotePath = (kbPath: string): string => {
   if (path.isAbsolute(kbPath)) {
     resolved = path.normalize(kbPath)
   } else {
-    if (KB_ROOT === undefined) {
+    if (kbRoot === undefined) {
       throw new KbPathError('kb_path is relative but MCP_NOTION_MIRROR_KB_ROOT is not set. Pass an absolute path or set the KB root.')
     }
-    resolved = path.resolve(KB_ROOT, kbPath)
+    resolved = path.resolve(kbRoot, kbPath)
   }
 
-  if (KB_ROOT !== undefined) {
-    assertWithin(KB_ROOT, resolved)
+  if (kbRoot !== undefined) {
+    assertWithin(kbRoot, resolved)
     const real = realpathDeepestExisting(resolved)
-    assertWithin(realpathDeepestExisting(KB_ROOT), real)
+    assertWithin(realpathDeepestExisting(kbRoot), real)
     return real
   }
   return realpathDeepestExisting(resolved)
