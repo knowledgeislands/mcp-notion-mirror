@@ -2,13 +2,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Config } from '../../config/index.js'
 import { listRoots } from '../../main/roots/index.js'
-import { loadMirrorSettings } from '../../main/trees/settings.js'
+import type { MirrorSettings } from '../../main/trees/settings.js'
 import { READ_ONLY_REMOTE } from '../../utils/annotations.js'
 import { errorResult, jsonResult } from '../../utils/results.js'
 
 const listInput = z.object({}).strict()
 
-export const registerRootsTools = (server: McpServer, cfg: Config): void => {
+export const registerRootsTools = (server: McpServer, cfg: Config, settings: MirrorSettings): void => {
   server.registerTool(
     'kb_notion_mirror_roots_list',
     {
@@ -26,7 +26,7 @@ Returns: [{ subtree, indexKbPath, parent }] sorted by subtree. A database parent
     async () => {
       try {
         if (!cfg.kbRoot) throw new Error('MCP_KB_NOTION_MIRROR_KB_ROOT must be set to list roots.')
-        return jsonResult(listRoots(cfg.kbRoot, loadMirrorSettings(process.env)))
+        return jsonResult(listRoots(cfg.kbRoot, settings))
       } catch (err) {
         return errorResult('listing roots', err)
       }

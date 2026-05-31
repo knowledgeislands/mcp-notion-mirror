@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { Config } from '../../config/index.js'
 import type { NotionParent } from '../../main/notion-client/index.js'
 import { deleteTree, preflightTree, statusTree, touchTree, updateTree } from '../../main/trees/index.js'
-import { loadMirrorSettings } from '../../main/trees/settings.js'
+import type { MirrorSettings } from '../../main/trees/settings.js'
 import { DESTRUCTIVE_REMOTE, READ_ONLY_REMOTE, WRITE_REMOTE_IDEMPOTENT } from '../../utils/annotations.js'
 import { parentArg } from '../../utils/notion-args.js'
 import { resolveKbNotePath } from '../../utils/paths.js'
@@ -54,7 +54,7 @@ const requireKbRoot = (cfg: Config): string => {
   return cfg.kbRoot
 }
 
-export const registerTreeTools = (server: McpServer, cfg: Config): void => {
+export const registerTreeTools = (server: McpServer, cfg: Config, settings: MirrorSettings): void => {
   server.registerTool(
     'kb_notion_mirror_tree_status',
     {
@@ -72,7 +72,7 @@ Returns: { total, published, pending, notes: [{ kbPath, published }] }. Pure rea
       try {
         const kbRoot = requireKbRoot(cfg)
         resolveKbNotePath(kbRoot, subtree)
-        return jsonResult(statusTree(kbRoot, subtree, loadMirrorSettings(process.env)))
+        return jsonResult(statusTree(kbRoot, subtree, settings))
       } catch (err) {
         return errorResult('reading subtree status', err)
       }
@@ -96,7 +96,7 @@ Returns: { issues: string[] } — empty when the subtree is mirror-ready. Pure r
       try {
         const kbRoot = requireKbRoot(cfg)
         resolveKbNotePath(kbRoot, subtree)
-        return jsonResult(preflightTree(kbRoot, subtree, loadMirrorSettings(process.env)))
+        return jsonResult(preflightTree(kbRoot, subtree, settings))
       } catch (err) {
         return errorResult('preflighting subtree', err)
       }
@@ -123,7 +123,7 @@ Returns: { eligible, outcomes: NoteOutcome[] } where NoteOutcome = { kbPath, act
         const kbRoot = requireKbRoot(cfg)
         resolveKbNotePath(kbRoot, subtree)
         if (kb_path !== undefined) resolveKbNotePath(kbRoot, kb_path)
-        return jsonResult(await touchTree(cfg, subtree, parent as NotionParent, loadMirrorSettings(process.env), kb_path))
+        return jsonResult(await touchTree(cfg, subtree, parent as NotionParent, settings, kb_path))
       } catch (err) {
         return errorResult('touching subtree', err)
       }
@@ -151,7 +151,7 @@ Returns: { eligible, outcomes: NoteOutcome[] } where NoteOutcome = { kbPath, act
         const kbRoot = requireKbRoot(cfg)
         resolveKbNotePath(kbRoot, subtree)
         if (kb_path !== undefined) resolveKbNotePath(kbRoot, kb_path)
-        return jsonResult(await updateTree(cfg, subtree, parent as NotionParent, loadMirrorSettings(process.env), { kbPath: kb_path, linkMap: link_map }))
+        return jsonResult(await updateTree(cfg, subtree, parent as NotionParent, settings, { kbPath: kb_path, linkMap: link_map }))
       } catch (err) {
         return errorResult('updating subtree', err)
       }
@@ -178,7 +178,7 @@ Returns: { eligible, outcomes: NoteOutcome[] } where NoteOutcome = { kbPath, act
         const kbRoot = requireKbRoot(cfg)
         resolveKbNotePath(kbRoot, subtree)
         if (kb_path !== undefined) resolveKbNotePath(kbRoot, kb_path)
-        return jsonResult(await deleteTree(cfg, subtree, loadMirrorSettings(process.env), { kbPath: kb_path, dryRun: dry_run }))
+        return jsonResult(await deleteTree(cfg, subtree, settings, { kbPath: kb_path, dryRun: dry_run }))
       } catch (err) {
         return errorResult('deleting subtree', err)
       }
