@@ -1,5 +1,6 @@
-# Knowledge Islands repo config — read by the knowledgeislands-repo-config skill.
+# Knowledge Islands repo config — read by the knowledgeislands-repo skill.
 # One [table] per skill that needs per-repo options.
-[knowledgeislands-repo-config]
+[knowledgeislands-repo]
 visibility = "public"   # "public" | "private"
-exceptions = []          # acknowledged check-ids, e.g. ["wiki"]
+# This repo fully conforms, so it declares no check overrides. To diverge, add a
+# [knowledgeislands-repo.checks] table with one boolean per check (true = enforce).
