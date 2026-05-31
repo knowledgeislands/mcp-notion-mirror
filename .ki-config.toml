@@ -1,0 +1,5 @@
+# Knowledge Islands repo config — read by the knowledgeislands-repo-config skill.
+# One [table] per skill that needs per-repo options.
+[knowledgeislands-repo-config]
+visibility = "public"   # "public" | "private"
+exceptions = []          # acknowledged check-ids, e.g. ["wiki"]
