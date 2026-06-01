@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Config } from '../../config/index.js'
 import type { NotionParent } from '../../main/notion-client/index.js'
-import { deleteTree, preflightTree, statusTree, touchTree, updateTree } from '../../main/trees/index.js'
+import { deleteTree, preflightTree, pruneTree, statusTree, touchTree, updateTree } from '../../main/trees/index.js'
 import type { MirrorSettings } from '../../main/trees/settings.js'
 import { DESTRUCTIVE_REMOTE, READ_ONLY_REMOTE, WRITE_REMOTE_IDEMPOTENT } from '../../utils/annotations.js'
 import { parentArg } from '../../utils/notion-args.js'
@@ -40,6 +40,12 @@ const deleteInput = z
     subtree: subtreeArg,
     kb_path: kbPathArg.optional(),
     dry_run: z.boolean().default(true).describe('When true (default) report what would be archived without calling Notion or editing notes.')
+  })
+  .strict()
+const pruneInput = z
+  .object({
+    subtree: subtreeArg,
+    dry_run: z.boolean().default(true).describe('When true (default) report which orphaned pages would be archived without calling Notion.')
   })
   .strict()
 
@@ -181,6 +187,31 @@ Returns: { eligible, outcomes: NoteOutcome[] } where NoteOutcome = { kbPath, act
         return jsonResult(await deleteTree(cfg, subtree, settings, { kbPath: kb_path, dryRun: dry_run }))
       } catch (err) {
         return errorResult('deleting subtree', err)
+      }
+    }
+  )
+
+  server.registerTool(
+    'kb_notion_mirror_tree_prune',
+    {
+      title: 'Prune orphaned mirror pages in a KB subtree',
+      description: `Archive Notion pages whose backing KB note has been DELETED under a subtree. Git-driven: an orphan is a note deleted in git history (or in the working tree relative to HEAD) whose kb_notion_mirror_url is no longer present in any live note on disk — a note that merely MOVED keeps its url and is never pruned. Destructive — defaults to a dry run. Requires the KB root to be a git repository.
+
+Args:
+  - subtree (string, required): kb-relative folder to scan for deleted notes.
+  - dry_run (boolean, default true): when true, report which orphaned pages would be archived without calling Notion.
+
+Returns: { eligible, outcomes: NoteOutcome[] } where NoteOutcome = { kbPath (the deleted note's path), action: "plan"|"delete"|"error", url?, error? }.`,
+      inputSchema: pruneInput,
+      annotations: DESTRUCTIVE_REMOTE
+    },
+    async ({ subtree, dry_run }) => {
+      try {
+        const kbRoot = requireKbRoot(cfg)
+        resolveKbNotePath(kbRoot, subtree)
+        return jsonResult(await pruneTree(cfg, subtree, settings, { dryRun: dry_run }))
+      } catch (err) {
+        return errorResult('pruning subtree', err)
       }
     }
   )

@@ -212,3 +212,5 @@ export const publishTreeNote = async (cfg: Config, subtree: string, parent: Noti
   const updated = await updateTree(cfg, subtree, parent, s, { kbPath })
   return { chain: touched.outcomes.map((o) => o.kbPath), outcomes: [...touched.outcomes, ...updated.outcomes] }
 }
+
+export { pruneRoots, pruneTree, selectOrphans } from './prune.js'

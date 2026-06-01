@@ -30,6 +30,8 @@ import {
   moveNote,
   preflightNote,
   preflightTree,
+  pruneRoots,
+  pruneTree,
   publishOrder,
   statusNote,
   statusTree,
@@ -52,14 +54,14 @@ tryLoadEnvFile('.env')
 const USAGE = `Usage: mcp-kb-notion-mirror-publish <resource> <verb> [args] [flags]
 
 note  <verb> <kbPath>   verbs: get | status | preflight | touch | update | move | delete
-tree  <verb> <subtree>  verbs: status | preflight | touch | update | delete
-roots <verb>            verbs: list | touch | update | publish | delete
+tree  <verb> <subtree>  verbs: status | preflight | touch | update | delete | prune
+roots <verb>            verbs: list | touch | update | publish | delete | prune
 
 Flags:
   --parent-db <id>    Notion wiki database parent (note/tree touch|update, note move)
   --parent-page <id>  Notion page parent (same verbs)
   --note <kbPath>     restrict a tree op to one note's ancestor chain
-  --dry-run           delete only: report what would be archived without touching Notion
+  --dry-run           delete/prune only: report what would be archived without touching Notion
 
 Env:
   MCP_KB_NOTION_MIRROR_TOKEN          required for Notion calls — integration secret
@@ -153,6 +155,8 @@ const runTree = async (verb: string, subtree: string, argv: string[], dryRun: bo
       return printOutcomes((await updateTree(cfg, subtree, parentFromFlags(argv), s, { kbPath: note })).outcomes)
     case 'delete':
       return printOutcomes((await deleteTree(cfg, subtree, s, { kbPath: note, dryRun })).outcomes)
+    case 'prune':
+      return printOutcomes((await pruneTree(cfg, subtree, s, { dryRun })).outcomes)
     default:
       console.error(`Unknown tree verb: ${verb}\n\n${USAGE}`)
       process.exit(2)
@@ -166,6 +170,9 @@ const runRoots = async (verb: string, dryRun: boolean): Promise<void> => {
     return json(listRoots(requireKbRoot(), s))
   }
   const cfg = loadConfig(process.env)
+  // prune scans git for deleted notes across the whole KB — it needs no roots list
+  // and must work even after every root has been removed.
+  if (verb === 'prune') return printOutcomes((await pruneRoots(cfg, s, { dryRun })).outcomes)
   const kbRoot = requireKbRoot()
   const roots = listRoots(kbRoot, s)
   if (roots.length === 0) {
