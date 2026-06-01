@@ -1,6 +1,9 @@
 version: 2
 updates:
-  - package-ecosystem: npm
+  # Bun projects (bun.lock): the `bun` ecosystem (Bun >= 1.1.39) updates package.json
+  # AND bun.lock on version bumps. Security-update PRs are separate (repo-level
+  # "Dependabot security updates" + the dependency graph), not driven by this file.
+  - package-ecosystem: bun
     directory: /
     schedule:
       interval: weekly
