@@ -117,6 +117,14 @@ const printOutcomes = (outcomes: { kbPath: string; action: string; url?: string;
   }
 }
 
+/** Live per-note progress line for long roots passes (touch/update), printed as each note completes. */
+const liveProgress =
+  () =>
+  (o: { kbPath: string; action: string; error?: string }, done: number, total: number): void => {
+    const detail = o.error ? `  (${o.error})` : ''
+    console.log(`  ${ACTION_GLYPH[o.action] ?? '?'} ${o.action.padEnd(7)} [${done}/${total}] ${o.kbPath}${detail}`)
+  }
+
 const json = (v: unknown): void => console.log(JSON.stringify(v, null, 2))
 
 // ── note ────────────────────────────────────────────────────────────────────
@@ -200,13 +208,13 @@ const runRoots = async (verb: string, argv: string[], dryRun: boolean): Promise<
   for (const r of roots) {
     const desc = r.parent.type === 'database_id' ? `db ${r.parent.database_id}` : `page ${r.parent.page_id}`
     console.log(`\n########## ${r.subtree}  (→ ${desc}) ##########`)
-    if (verb === 'touch' || verb === 'publish') printOutcomes((await touchTree(cfg, r.subtree, r.parent, s)).outcomes)
+    if (verb === 'touch' || verb === 'publish') await touchTree(cfg, r.subtree, r.parent, s, undefined, liveProgress())
   }
   if (verb === 'update' || verb === 'publish') {
     const linkMap = globalLinkMap() // one map across ALL roots → cross-root wikilinks resolve
     for (const r of roots) {
       console.log(`\n########## update ${r.subtree} ##########`)
-      printOutcomes((await updateTree(cfg, r.subtree, r.parent, s, { linkMap, force: argv.includes('--force'), verify: argv.includes('--verify') })).outcomes)
+      await updateTree(cfg, r.subtree, r.parent, s, { linkMap, force: argv.includes('--force'), verify: argv.includes('--verify'), onProgress: liveProgress() })
     }
   }
   if (verb === 'baseline') {

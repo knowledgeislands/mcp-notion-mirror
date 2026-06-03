@@ -120,7 +120,14 @@ const seedUrls = (notes: Note[]): Map<string, string> => {
  * scaffolding each under its folder-index parent so all URLs become known.
  * Idempotent — already-mirrored notes are skipped.
  */
-export const touchTree = async (cfg: Config, subtree: string, parent: NotionParent, s: MirrorSettings, kbPath?: string): Promise<TreeResult> => {
+export const touchTree = async (
+  cfg: Config,
+  subtree: string,
+  parent: NotionParent,
+  s: MirrorSettings,
+  kbPath?: string,
+  onProgress?: (o: NoteOutcome, done: number, total: number) => void
+): Promise<TreeResult> => {
   const kbRoot = requireRoot(cfg)
   const notes = notesFor(kbRoot, subtree, s, kbPath)
   // Seed ancestor URLs from disk so resolveParent finds indexes touched in a
@@ -128,21 +135,26 @@ export const touchTree = async (cfg: Config, subtree: string, parent: NotionPare
   // `skip` without a Notion create.
   const urlByKbPath = seedUrls(notes)
   const outcomes: NoteOutcome[] = []
+  // Push the outcome AND emit it to the optional progress callback (live CLI logging).
+  const record = (o: NoteOutcome): void => {
+    outcomes.push(o)
+    onProgress?.(o, outcomes.length, notes.length)
+  }
   for (const n of notes) {
     let resolved: NotionParent
     try {
       resolved = resolveParent(n, subtree, parent, urlByKbPath)
     } catch (err) {
-      outcomes.push({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
+      record({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
       continue
     }
     try {
       const res = await touchNote(cfg, n.kbPath, resolved, { icon: iconFor(n.fields.icon, s) })
       const url = 'skipped' in res ? res.existing_url : res.url
       urlByKbPath.set(n.kbPath, url)
-      outcomes.push({ kbPath: n.kbPath, action: 'skipped' in res ? 'skip' : 'touch', url })
+      record({ kbPath: n.kbPath, action: 'skipped' in res ? 'skip' : 'touch', url })
     } catch (err) {
-      outcomes.push({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
+      record({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
     }
   }
   return { eligible: notes.length, outcomes }
@@ -179,24 +191,29 @@ export const updateTree = async (
   subtree: string,
   parent: NotionParent,
   s: MirrorSettings,
-  opts: { kbPath?: string; linkMap?: Record<string, string>; force?: boolean; verify?: boolean } = {}
+  opts: { kbPath?: string; linkMap?: Record<string, string>; force?: boolean; verify?: boolean; onProgress?: (o: NoteOutcome, done: number, total: number) => void } = {}
 ): Promise<TreeResult> => {
   const kbRoot = requireRoot(cfg)
   const notes = notesFor(kbRoot, subtree, s, opts.kbPath)
   const linkMap = opts.linkMap ?? buildLinkMap(notes)
   const urlByKbPath = seedUrls(notes)
   const outcomes: NoteOutcome[] = []
+  // Push the outcome AND emit it to the optional progress callback (live CLI logging).
+  const record = (o: NoteOutcome): void => {
+    outcomes.push(o)
+    opts.onProgress?.(o, outcomes.length, notes.length)
+  }
   for (const n of notes) {
     const have = urlByKbPath.get(n.kbPath)
     if (!have) {
-      outcomes.push({ kbPath: n.kbPath, action: 'skip', error: 'not yet touched — run touch first' })
+      record({ kbPath: n.kbPath, action: 'skip', error: 'not yet touched — run touch first' })
       continue
     }
     let resolved: NotionParent
     try {
       resolved = resolveParent(n, subtree, parent, urlByKbPath)
     } catch (err) {
-      outcomes.push({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
+      record({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
       continue
     }
     try {
@@ -212,10 +229,10 @@ export const updateTree = async (
       }
       const res = await updateNote(cfg, n.kbPath, resolved, { icon: iconFor(n.fields.icon, s), linkMap, force })
       // `skipped` → content unchanged since last mirror, no Notion call made.
-      outcomes.push({ kbPath: n.kbPath, action: 'skipped' in res ? 'skip' : 'update', url: res.url })
+      record({ kbPath: n.kbPath, action: 'skipped' in res ? 'skip' : 'update', url: res.url })
     } catch (err) {
       // Best-effort — record the error but keep going so the rest of the tree still updates.
-      outcomes.push({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
+      record({ kbPath: n.kbPath, action: 'error', error: (err as Error).message })
     }
   }
   return { eligible: notes.length, outcomes }
