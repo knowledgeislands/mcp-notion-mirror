@@ -23,7 +23,7 @@
     "json5": "^2.2.3",
     "lint-staged": "^17.0.7",
     "markdownlint-cli2": "^0.22.1",
-    "prettier": "^3.8.3",
+    "prettier": "^3.8.4",
     "syncpack": "^15.3.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
