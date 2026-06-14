@@ -11,7 +11,7 @@ describe('banner', () => {
     expect(block.type).toBe('callout')
     expect(block.callout.icon).toEqual({ type: 'emoji', emoji: '📘' })
     const fullText = block.callout.rich_text.map((r) => r.text.content).join('')
-    expect(fullText).toContain('Mirrored from Knowledge Base on 2026-05-30')
+    expect(fullText).toContain('Mirrored from Knowledge Base - last updated on 2026-05-30')
     // The default template wraps the lead clause in bold.
     expect(block.callout.rich_text.some((r) => r.annotations?.bold)).toBe(true)
   })

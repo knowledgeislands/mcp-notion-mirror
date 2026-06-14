@@ -22,7 +22,7 @@ export type AuditLogMode = 'off' | 'writes' | 'all'
  * empty string disables the banner. The default omits a leading emoji because
  * the callout renders the 📘 icon (see src/main/mirror/banner.ts).
  */
-export const DEFAULT_BANNER_TEMPLATE = "**Mirrored from Knowledge Base on {date}** — canonical version lives in HNR's KB; feedback via comments here will be triaged back into the KB."
+export const DEFAULT_BANNER_TEMPLATE = '**Mirrored from Knowledge Base - last updated on {date}**'
 
 /**
  * Mirror-walk settings — the KB-specific knobs the tree/roots walks need beyond
