@@ -34,6 +34,13 @@ const settings = (overrides: Partial<MirrorSettings> = {}): MirrorSettings => ({
   ...overrides
 })
 
+// Asserts a lookup actually found something, then narrows it for the call that follows.
+// Fails the test with a clear message rather than passing `undefined` downstream.
+const defined = <T>(value: T | undefined): T => {
+  expect(value).toBeDefined()
+  return value as T
+}
+
 describe('readFrontmatter', () => {
   it('extracts top-level scalar fields, ignoring list items and nested keys', () => {
     const text = `---
@@ -167,14 +174,14 @@ describe('tree FS layer', () => {
     it('routes the subtree-root index to the caller-supplied root parent', async () => {
       await write('Alpha/Alpha.md', fm({}))
       const [note] = discover(kbRoot, SUBTREE, s)
-      expect(resolveParent(note!, SUBTREE, ROOT_PARENT, new Map())).toEqual(ROOT_PARENT)
+      expect(resolveParent(defined(note), SUBTREE, ROOT_PARENT, new Map())).toEqual(ROOT_PARENT)
     })
 
     it('routes a deeper folder index to the grandparent folder index page', async () => {
       await write('Alpha/Alpha.md', fm({}))
       await write('Alpha/Beta/Beta.md', fm({}))
       const notes = publishOrder(kbRoot, SUBTREE, s, discover(kbRoot, SUBTREE, s))
-      const beta = notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md')!
+      const beta = defined(notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md'))
       const urls = new Map([['Alpha/Alpha.md', ALPHA_URL]])
       expect(resolveParent(beta, SUBTREE, ROOT_PARENT, urls)).toEqual({ type: 'page_id', page_id: PAGE_ID })
     })
@@ -184,7 +191,7 @@ describe('tree FS layer', () => {
       await write('Alpha/Beta/Beta.md', fm({}))
       await write('Alpha/Beta/Gamma.md', fm({}))
       const notes = publishOrder(kbRoot, SUBTREE, s, discover(kbRoot, SUBTREE, s))
-      const leaf = notes.find((n) => n.kbPath === 'Alpha/Beta/Gamma.md')!
+      const leaf = defined(notes.find((n) => n.kbPath === 'Alpha/Beta/Gamma.md'))
       const urls = new Map([
         ['Alpha/Alpha.md', ALPHA_URL],
         ['Alpha/Beta/Beta.md', BETA_URL]
@@ -198,7 +205,7 @@ describe('tree FS layer', () => {
       await write('Alpha/Alpha.md', fm({}))
       await write('Alpha/Beta/Beta.md', fm({}))
       const notes = publishOrder(kbRoot, SUBTREE, s, discover(kbRoot, SUBTREE, s))
-      const beta = notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md')!
+      const beta = defined(notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md'))
       expect(() => resolveParent(beta, SUBTREE, ROOT_PARENT, new Map())).toThrow(/required parent index not yet published/)
     })
 
@@ -206,7 +213,7 @@ describe('tree FS layer', () => {
       await write('Alpha/Alpha.md', fm({}))
       await write('Alpha/Beta/Beta.md', fm({}))
       const notes = publishOrder(kbRoot, SUBTREE, s, discover(kbRoot, SUBTREE, s))
-      const beta = notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md')!
+      const beta = defined(notes.find((n) => n.kbPath === 'Alpha/Beta/Beta.md'))
       const urls = new Map([['Alpha/Alpha.md', 'https://www.notion.so/no-id-here']])
       expect(() => resolveParent(beta, SUBTREE, ROOT_PARENT, urls)).toThrow(/bad URL/)
     })
